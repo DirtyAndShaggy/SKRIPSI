@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Attendance Report Test</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+        .present { color: green; font-weight: bold; }
+        .late { color: orange; font-weight: bold; }
+        .absent { color: red; font-weight: bold; }
+        .summary { background: #f0f0f0; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Attendance Report Test</h1>
+    
+    <div>
+        <label>Schedule ID: </label>
+        <input type="number" id="schedule_id" value="1">
+        <label>Date: </label>
+        <input type="date" id="date" value="<?php echo date('Y-m-d'); ?>">
+        <button onclick="loadReport()">Load Report</button>
+    </div>
+    
+    <div id="result"></div>
+    
+    <script>
+        function loadReport() {
+            const schedule_id = document.getElementById('schedule_id').value;
+            const date = document.getElementById('date').value;
+            
+            fetch(`attendance_report.php?schedule_id=${schedule_id}&date=${date}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        displayReport(data);
+                    } else {
+                        document.getElementById('result').innerHTML = `<p style="color:red">Error: ${data.message}</p>`;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('result').innerHTML = `<p style="color:red">Error: ${error}</p>`;
+                });
+        }
+        
+        function displayReport(data) {
+            let html = `
+                <div class="summary">
+                    <h2>${data.class_name}</h2>
+                    <p><strong>Lecturer:</strong> ${data.lecturer_name} | <strong>Room:</strong> ${data.room_name}</p>
+                    <p><strong>Date:</strong> ${data.date} (${data.day_of_week}) | <strong>Time:</strong> ${data.start_time} - ${data.end_time}</p>
+                    <hr>
+                    <h3>Summary:</h3>
+                    <table style="width: auto;">
+                        <tr><td><strong>Total Students:</strong></td><td>${data.summary.total_students}</td></tr>
+                        <tr><td><strong>Present:</strong></td><td class="present">${data.summary.present}</td></tr>
+                        <tr><td><strong>Late:</strong></td><td class="late">${data.summary.late}</td></tr>
+                        <tr><td><strong>Absent:</strong></td><td class="absent">${data.summary.absent}</td></tr>
+                        <tr><td><strong>Attendance Rate:</strong></td><td>${data.summary.attendance_rate}%</td></tr>
+                    </table>
+                </div>
+                
+                <h3>Student List:</h3>
+                <table>
+                    <thead>
+                        <tr><th>NIM</th><th>Name</th><th>Status</th><th>Time</th></tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            for (const student of data.students) {
+                let statusClass = '';
+                if (student.final_status === 'Present') statusClass = 'present';
+                else if (student.final_status === 'Late') statusClass = 'late';
+                else statusClass = 'absent';
+                
+                let statusSymbol = '';
+                if (student.final_status === 'Present') statusSymbol = '✓';
+                else if (student.final_status === 'Late') statusSymbol = '⚠';
+                else statusSymbol = '✗';
+                
+                html += `
+                    <tr>
+                        <td>${student.nim}</td>
+                        <td>${student.name}</td>
+                        <td class="${statusClass}">${statusSymbol} ${student.final_status}</td>
+                        <td>${student.formatted_time || '-'}</td>
+                    </tr>
+                `;
+            }
+            
+            html += `</tbody></table>`;
+            document.getElementById('result').innerHTML = html;
+        }
+        
+        // Load default report on page load
+        loadReport();
+    </script>
+</body>
+</html>
