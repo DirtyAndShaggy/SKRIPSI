@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Change this to your PHP backend IP
-const API_BASE = 'http://192.168.1.6/attendance_api';
+// Use localhost for testing (since XAMPP is on the same computer)
+const API_BASE = 'http://localhost/attendance_api';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -48,7 +48,6 @@ export const attendanceAPI = {
   // Today's attendance (current schedule)
   getTodayAttendance: () => {
     const today = new Date().toISOString().split('T')[0];
-    // You'll need to get the current schedule ID - for now, use 1
     return api.get(`/reports/attendance_report.php?schedule_id=1&date=${today}`);
   },
   

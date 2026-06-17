@@ -1,5 +1,6 @@
 <?php
-
+include("../cors_headers.php");
+include("../config/database.php");
 header("Content-Type: application/json");
 date_default_timezone_set('Asia/Jakarta');
 include("../config/database.php");

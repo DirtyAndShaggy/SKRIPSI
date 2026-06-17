@@ -1,4 +1,6 @@
 <?php
+include("../cors_headers.php");
+include("../config/database.php");
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");

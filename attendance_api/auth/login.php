@@ -1,13 +1,5 @@
 <?php
-header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
-
+include("../cors_headers.php");
 include("../config/database.php");
 
 $data = json_decode(file_get_contents("php://input"), true);
@@ -25,13 +17,11 @@ if (empty($email) || empty($password)) {
     exit;
 }
 
-// MODIFIED: Direct comparison for testing
 $query = "SELECT user_id, email, full_name, role, password_hash FROM users WHERE email = '$email' AND is_active = 1";
 $result = mysqli_query($conn, $query);
 
 if ($row = mysqli_fetch_assoc($result)) {
-    // TEMPORARY: Direct string comparison instead of password_verify()
-    // This is for testing only! Remove this after testing
+    // Check plain text or hashed
     if ($password === $row['password_hash'] || password_verify($password, $row['password_hash'])) {
         echo json_encode([
             "status" => "success",

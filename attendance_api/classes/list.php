@@ -1,6 +1,5 @@
 <?php
-header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
+include("../cors_headers.php");
 include("../config/database.php");
 
 $query = "SELECT class_id, class_code, class_name, lecturer_name, room_name FROM classes ORDER BY class_id DESC";

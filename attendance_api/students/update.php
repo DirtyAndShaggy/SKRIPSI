@@ -1,6 +1,5 @@
 <?php
-header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
+include("../cors_headers.php");
 include("../config/database.php");
 
 $data = json_decode(file_get_contents("php://input"), true);

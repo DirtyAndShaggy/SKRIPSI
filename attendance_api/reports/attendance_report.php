@@ -1,6 +1,5 @@
 <?php
-header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
+include("../cors_headers.php");
 include("../config/database.php");
 
 $schedule_id = $_GET['schedule_id'] ?? null;
@@ -35,7 +34,7 @@ if (!$classResult || mysqli_num_rows($classResult) === 0) {
 
 $classInfo = mysqli_fetch_assoc($classResult);
 
-// Get ALL enrolled students + their attendance status for this specific schedule
+// Get ALL enrolled students + their attendance status
 $query = "
 SELECT 
     s.student_id,

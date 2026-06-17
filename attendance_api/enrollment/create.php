@@ -1,5 +1,6 @@
 <?php
-
+include("../cors_headers.php");
+include("../config/database.php");
 header("Content-Type: application/json");
 include("../config/database.php");
 
