@@ -21,8 +21,8 @@ $query = "SELECT user_id, email, full_name, role, password_hash FROM users WHERE
 $result = mysqli_query($conn, $query);
 
 if ($row = mysqli_fetch_assoc($result)) {
-    // Check plain text or hashed
-    if ($password === $row['password_hash'] || password_verify($password, $row['password_hash'])) {
+    // ONLY use password_verify() - plain text check REMOVED
+    if (password_verify($password, $row['password_hash'])) {
         echo json_encode([
             "status" => "success",
             "user_id" => $row['user_id'],
