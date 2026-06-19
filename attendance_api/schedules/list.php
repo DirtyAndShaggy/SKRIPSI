@@ -2,17 +2,41 @@
 include("../cors_headers.php");
 include("../config/database.php");
 
-$class_id = $_GET['class_id'] ?? 0;
+$class_id = $_GET['class_id'] ?? null;
 
-if (!$class_id) {
-    echo json_encode(["status" => "error", "message" => "class_id required"]);
-    exit;
+if ($class_id) {
+    $query = "
+    SELECT 
+        cs.schedule_id,
+        cs.class_id,
+        cs.day_of_week,
+        cs.start_time,
+        cs.end_time,
+        cs.device_id,
+        c.class_name,
+        c.class_code
+    FROM class_schedules cs
+    JOIN classes c ON cs.class_id = c.class_id
+    WHERE cs.class_id = '$class_id'
+    ORDER BY FIELD(cs.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'), cs.start_time
+    ";
+} else {
+    $query = "
+    SELECT 
+        cs.schedule_id,
+        cs.class_id,
+        cs.day_of_week,
+        cs.start_time,
+        cs.end_time,
+        cs.device_id,
+        c.class_name,
+        c.class_code
+    FROM class_schedules cs
+    JOIN classes c ON cs.class_id = c.class_id
+    ORDER BY FIELD(cs.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'), cs.start_time
+    ";
 }
 
-$query = "SELECT schedule_id, class_id, day_of_week, start_time, end_time, device_id 
-          FROM class_schedules 
-          WHERE class_id = '$class_id' 
-          ORDER BY FIELD(day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'), start_time";
 $result = mysqli_query($conn, $query);
 
 $schedules = [];

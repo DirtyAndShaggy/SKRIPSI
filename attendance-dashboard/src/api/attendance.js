@@ -37,9 +37,19 @@ export const attendanceAPI = {
   // Classes
   getClasses: () => api.get('/classes/list.php'),
   addClass: (data) => api.post('/classes/add.php', data),
-  
+
   // Schedules
+  getAllSchedules: () => api.get('/schedules/list.php'),
   getSchedules: (classId) => api.get(`/schedules/list.php?class_id=${classId}`),
+  addSchedule: (data) => api.post('/schedules/add.php', data),
+  deleteSchedule: (scheduleId) => api.post('/schedules/delete.php', { schedule_id: scheduleId }),
+  updateSchedule: (scheduleId, data) => api.post('/schedules/update.php', { schedule_id: scheduleId, ...data }),
+  
+  // Get today's schedule for a device
+  getTodaySchedule: async (deviceId = 'ESP32_01') => {
+  const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
+  return api.get(`/schedules/today.php?day=${dayName}&device_id=${deviceId}`);
+  },
   
   // Attendance Report
   getAttendanceReport: (scheduleId, date) => 
