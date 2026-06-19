@@ -64,6 +64,13 @@ export const attendanceAPI = {
   // Enrollment
   requestEnrollment: (studentId, fingerprintSlot) => 
     api.post('/enrollment/request.php', { student_id: studentId, fingerprint_slot: fingerprintSlot }),
+
+  // Users
+  getUsers: () => api.get('/users/list.php'),
+  addUser: (data) => api.post('/users/add.php', data),
+  updateUser: (userId, data) => api.post('/users/update.php', { user_id: userId, ...data }),
+  deleteUser: (userId) => api.post('/users/delete.php', { user_id: userId }),
+  resetPassword: (userId, newPassword) => api.post('/users/reset_password.php', { user_id: userId, new_password: newPassword }),
 };
 
 export default attendanceAPI;

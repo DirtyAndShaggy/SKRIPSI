@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useUser } from '../context/UserContext';
 import { 
   LayoutDashboard, 
   Users, 
@@ -7,14 +8,14 @@ import {
   Calendar, 
   CheckSquare, 
   FileText,
-  Settings,
   Users2,
   LogOut,
   Fingerprint
 } from 'lucide-react';
 
-function Sidebar({ user }) {
+function Sidebar() {
   const location = useLocation();
+  const { user, logout } = useUser();
   const isAdmin = user?.role === 'admin';
 
   const menuItems = [
@@ -22,7 +23,7 @@ function Sidebar({ user }) {
     { path: '/students', icon: Users, label: 'Students', show: true },
     { path: '/classes', icon: BookOpen, label: 'Classes', show: true },
     { path: '/schedules', icon: Calendar, label: 'Schedules', show: isAdmin },
-    { path: '/attendance', icon: CheckSquare, label: 'Today\'s Attendance', show: true },
+    { path: '/attendance', icon: CheckSquare, label: "Today's Attendance", show: true },
     { path: '/reports', icon: FileText, label: 'Reports', show: true },
     { path: '/users', icon: Users2, label: 'Users', show: isAdmin },
     { path: '/devices', icon: Fingerprint, label: 'Devices', show: isAdmin },
@@ -77,10 +78,7 @@ function Sidebar({ user }) {
           </div>
         </div>
         <button
-          onClick={() => {
-            localStorage.clear();
-            window.location.href = '/';
-          }}
+          onClick={logout}
           className="flex items-center gap-2 text-sm text-slate-400 hover:text-white w-full px-2 py-1.5 rounded-lg hover:bg-slate-800 transition-colors"
         >
           <LogOut className="w-4 h-4" />

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useUser } from './context/UserContext';
 import Login from './pages/Login';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -8,23 +9,17 @@ import Classes from './pages/Classes';
 import TodayAttendance from './pages/TodayAttendance';
 import Reports from './pages/Reports';
 import Schedules from './pages/Schedules';
+import Users from './pages/Users';
+import Devices from './pages/Devices';
 
-// Placeholder pages (we'll build these later)
-
-const Users = () => <div className="p-6 bg-white rounded-xl shadow"><h2 className="text-xl font-bold">User Management</h2><p className="text-slate-500 mt-2">User management coming soon...</p></div>;
-const Devices = () => <div className="p-6 bg-white rounded-xl shadow"><h2 className="text-xl font-bold">Device Management</h2><p className="text-slate-500 mt-2">Device management coming soon...</p></div>;
-
-// Protected route wrapper
 const ProtectedRoute = ({ children, allowedRole }) => {
-  const user = localStorage.getItem('user');
+  const { user } = useUser();
   
   if (!user) {
     return <Navigate to="/" replace />;
   }
   
-  const userData = JSON.parse(user);
-  
-  if (allowedRole && userData.role !== allowedRole && userData.role !== 'admin') {
+  if (allowedRole && user.role !== allowedRole && user.role !== 'admin') {
     return <Navigate to="/dashboard" replace />;
   }
   
@@ -32,86 +27,79 @@ const ProtectedRoute = ({ children, allowedRole }) => {
 };
 
 function App() {
-  const [user, setUser] = useState(null);
+  const { user, loading } = useUser();
 
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
-  }, []);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
-        
-        {/* Protected Routes with Layout */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
-            <Layout user={user}>
+            <Layout>
               <Dashboard />
             </Layout>
           </ProtectedRoute>
         } />
-        
         <Route path="/students" element={
           <ProtectedRoute>
-            <Layout user={user}>
+            <Layout>
               <Students />
             </Layout>
           </ProtectedRoute>
         } />
-        
         <Route path="/classes" element={
           <ProtectedRoute>
-            <Layout user={user}>
+            <Layout>
               <Classes />
             </Layout>
           </ProtectedRoute>
         } />
-        
         <Route path="/schedules" element={
           <ProtectedRoute allowedRole="admin">
-            <Layout user={user}>
+            <Layout>
               <Schedules />
             </Layout>
           </ProtectedRoute>
         } />
-        
         <Route path="/attendance" element={
           <ProtectedRoute>
-            <Layout user={user}>
+            <Layout>
               <TodayAttendance />
             </Layout>
           </ProtectedRoute>
         } />
-        
         <Route path="/reports" element={
           <ProtectedRoute>
-            <Layout user={user}>
+            <Layout>
               <Reports />
             </Layout>
           </ProtectedRoute>
         } />
-        
         <Route path="/users" element={
           <ProtectedRoute allowedRole="admin">
-            <Layout user={user}>
+            <Layout>
               <Users />
             </Layout>
           </ProtectedRoute>
         } />
-        
         <Route path="/devices" element={
           <ProtectedRoute allowedRole="admin">
-            <Layout user={user}>
+            <Layout>
               <Devices />
             </Layout>
           </ProtectedRoute>
         } />
-        
-        {/* Redirect to dashboard if logged in */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

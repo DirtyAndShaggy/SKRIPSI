@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '../context/UserContext';
 import attendanceAPI from '../api/attendance';
 
 function Login() {
@@ -8,6 +9,7 @@ function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useUser();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,19 +20,17 @@ function Login() {
       const response = await attendanceAPI.login(email, password);
       
       if (response.data.status === 'success') {
-        // Store user info
-        localStorage.setItem('token', 'dummy-token'); // Replace with real token
-        localStorage.setItem('user', JSON.stringify({
+        const userData = {
           role: response.data.role,
           name: response.data.name,
-        }));
+          user_id: response.data.user_id
+        };
         
-        // Redirect based on role
-        if (response.data.role === 'admin') {
-          navigate('/admin');
-        } else {
-          navigate('/lecturer');
-        }
+        // Use context login - updates state AND localStorage
+        login(userData);
+        
+        // Navigate to dashboard - state is already updated!
+        navigate('/dashboard');
       } else {
         setError(response.data.message || 'Login failed');
       }
