@@ -62,8 +62,17 @@ export const attendanceAPI = {
   },
   
   // Enrollment
-  requestEnrollment: (studentId, fingerprintSlot) => 
-    api.post('/enrollment/request.php', { student_id: studentId, fingerprint_slot: fingerprintSlot }),
+  requestEnrollment: (studentId) => 
+  api.post('/enrollment/create.php', { 
+    student_id: studentId, 
+    device_id: 'ESP32_01'
+  }),
+
+  // Cancel fingerprint enrollment
+  cancelEnrollment: (requestId) => 
+  api.post('/enrollment/cancel.php', { 
+    request_id: requestId 
+  }),
 
   // Users
   getUsers: () => api.get('/users/list.php'),
