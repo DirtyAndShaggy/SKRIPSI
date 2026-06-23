@@ -11,6 +11,7 @@ import Reports from './pages/Reports';
 import Schedules from './pages/Schedules';
 import Users from './pages/Users';
 import Devices from './pages/Devices';
+import Rooms from './pages/Rooms';
 
 const ProtectedRoute = ({ children, allowedRole }) => {
   const { user } = useUser();
@@ -62,6 +63,13 @@ function App() {
           <ProtectedRoute>
             <Layout>
               <Classes />
+            </Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/rooms" element={
+          <ProtectedRoute allowedRole="admin">
+            <Layout user={user}>
+              <Rooms />
             </Layout>
           </ProtectedRoute>
         } />

@@ -10,7 +10,8 @@ import {
   FileText,
   Users2,
   LogOut,
-  Fingerprint
+  Fingerprint,
+  Building,
 } from 'lucide-react';
 
 function Sidebar() {
@@ -27,6 +28,7 @@ function Sidebar() {
     { path: '/reports', icon: FileText, label: 'Reports', show: true },
     { path: '/users', icon: Users2, label: 'Users', show: isAdmin },
     { path: '/devices', icon: Fingerprint, label: 'Devices', show: isAdmin },
+    { path: '/rooms', icon: Building, label: 'Rooms', show: isAdmin },
   ];
 
   return (

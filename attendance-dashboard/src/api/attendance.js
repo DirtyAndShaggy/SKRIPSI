@@ -37,6 +37,8 @@ export const attendanceAPI = {
   // Classes
   getClasses: () => api.get('/classes/list.php'),
   addClass: (data) => api.post('/classes/add.php', data),
+  updateClass: (id, data) => api.post('/classes/update.php', { class_id: id, ...data }),
+  deleteClass: (id) => api.post('/classes/delete.php', { class_id: id }),
 
   // Schedules
   getAllSchedules: () => api.get('/schedules/list.php'),
@@ -45,6 +47,12 @@ export const attendanceAPI = {
   deleteSchedule: (scheduleId) => api.post('/schedules/delete.php', { schedule_id: scheduleId }),
   updateSchedule: (scheduleId, data) => api.post('/schedules/update.php', { schedule_id: scheduleId, ...data }),
   
+  // Rooms
+  getRooms: () => api.get('/rooms/list.php'),
+  addRoom: (data) => api.post('/rooms/add.php', data),
+  updateRoom: (roomId, data) => api.post('/rooms/update.php', { room_id: roomId, ...data }),
+  deleteRoom: (roomId) => api.post('/rooms/delete.php', { room_id: roomId }),
+
   // Get today's schedule for a device
   getTodaySchedule: async (deviceId = 'ESP32_01') => {
   const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
