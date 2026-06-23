@@ -6,7 +6,9 @@ $data = json_decode(file_get_contents("php://input"), true);
 
 $nim = $data['nim'] ?? '';
 $name = $data['name'] ?? '';
-$email = $data['email'] ?? '';
+$email = $data['email'] ?? null;
+$semester = $data['semester'] ?? null;
+$academic_year = $data['academic_year'] ?? null;
 $fingerprint_id = $data['fingerprint_id'] ?? null;
 
 if (empty($nim) || empty($name)) {
@@ -14,9 +16,13 @@ if (empty($nim) || empty($name)) {
     exit;
 }
 
+$email_value = $email ? "'$email'" : "NULL";
+$semester_value = $semester ? "'$semester'" : "NULL";
+$academic_year_value = $academic_year ? "'$academic_year'" : "NULL";
 $fingerprint_value = $fingerprint_id ? "'$fingerprint_id'" : "NULL";
 
-$query = "INSERT INTO students (nim, name, email, fingerprint_id) VALUES ('$nim', '$name', '$email', $fingerprint_value)";
+$query = "INSERT INTO students (nim, name, email, semester, academic_year, fingerprint_id) 
+          VALUES ('$nim', '$name', $email_value, $semester_value, $academic_year_value, $fingerprint_value)";
 
 if (mysqli_query($conn, $query)) {
     echo json_encode(["status" => "success", "student_id" => mysqli_insert_id($conn)]);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Fingerprint, Plus, Edit2, Trash2, X, Loader2, RefreshCw } from 'lucide-react';
+import { Fingerprint, Plus, Edit2, Trash2, X, Loader2, RefreshCw, GraduationCap } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
 function Students() {
@@ -15,52 +15,41 @@ function Students() {
     nim: '',
     name: '',
     email: '',
+    semester: '',
+    academic_year: '',
     fingerprint_id: ''
   });
   
-  // Ref for auto-refresh interval
   const intervalRef = useRef(null);
 
-  // Load students on mount and setup auto-refresh
+  // Semester options
+  const semesterOptions = [1, 2, 3, 4, 5, 6, 7, 8];
+  const academicYearOptions = ['2023/2024', '2024/2025', '2025/2026', '2026/2027'];
+
   useEffect(() => {
     loadStudents();
-
-    // Auto-refresh every 30 seconds
-    intervalRef.current = setInterval(() => {
-      loadStudents(false);
-    }, 30000);
-
-    // Cleanup interval on unmount
+    intervalRef.current = setInterval(() => loadStudents(false), 30000);
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
   const loadStudents = async (showLoading = true) => {
-    if (showLoading) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
+    if (showLoading) setLoading(true);
+    else setRefreshing(true);
     
     try {
       const response = await attendanceAPI.getStudents();
       if (response.data.status === 'success') {
         setStudents(response.data.students);
         setLastUpdated(new Date());
-        
-        // Check enrollment status for each student
         response.data.students.forEach(student => {
           checkEnrollmentStatus(student.student_id);
         });
       }
     } catch (err) {
       console.error('Failed to load students', err);
-      if (showLoading) {
-        alert('Error loading students. Check if API is running.');
-      }
+      if (showLoading) alert('Error loading students. Check if API is running.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -78,9 +67,7 @@ function Students() {
     }
   };
 
-  const handleRefresh = () => {
-    loadStudents(false);
-  };
+  const handleRefresh = () => loadStudents(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -89,25 +76,27 @@ function Students() {
       const data = {
         nim: formData.nim,
         name: formData.name,
-        email: formData.email,
+        email: formData.email || null,
+        semester: formData.semester || null,
+        academic_year: formData.academic_year || null,
         fingerprint_id: formData.fingerprint_id || null
       };
       
       if (editingStudent) {
         await attendanceAPI.updateStudent(editingStudent.student_id, data);
+        alert('Student updated successfully!');
       } else {
         await attendanceAPI.addStudent(data);
+        alert('Student added successfully!');
       }
       
-      setFormData({ nim: '', name: '', email: '', fingerprint_id: '' });
+      setFormData({ nim: '', name: '', email: '', semester: '', academic_year: '', fingerprint_id: '' });
       setShowForm(false);
       setEditingStudent(null);
       loadStudents();
-      
-      alert(editingStudent ? 'Student updated!' : 'Student added!');
     } catch (err) {
       console.error('Failed to save student', err);
-      alert('Error saving student');
+      alert('Error saving student. Please try again.');
     }
   };
 
@@ -117,10 +106,10 @@ function Students() {
     try {
       await attendanceAPI.deleteStudent(studentId);
       loadStudents();
-      alert('Student deleted!');
+      alert('Student deleted successfully!');
     } catch (err) {
       console.error('Failed to delete student', err);
-      alert('Error deleting student');
+      alert('Error deleting student. Please try again.');
     }
   };
 
@@ -130,6 +119,8 @@ function Students() {
       nim: student.nim,
       name: student.name,
       email: student.email || '',
+      semester: student.semester || '',
+      academic_year: student.academic_year || '',
       fingerprint_id: student.fingerprint_id || ''
     });
     setShowForm(true);
@@ -157,8 +148,6 @@ function Students() {
           }
         }));
         alert(`Enrollment request created! Student will be assigned to slot ${response.data.fingerprint_slot}. Please scan fingerprint on ESP32.`);
-        
-        // Refresh student list to show updated fingerprint_id
         setTimeout(() => loadStudents(), 3000);
       } else {
         setEnrollmentStatus(prev => ({
@@ -189,7 +178,7 @@ function Students() {
   const cancelForm = () => {
     setShowForm(false);
     setEditingStudent(null);
-    setFormData({ nim: '', name: '', email: '', fingerprint_id: '' });
+    setFormData({ nim: '', name: '', email: '', semester: '', academic_year: '', fingerprint_id: '' });
   };
 
   const getStatusDisplay = (student) => {
@@ -202,20 +191,16 @@ function Students() {
       </span>;
     }
     if (status?.status === 'requested') {
-      return <span className="text-blue-600 text-xs">
-        ⏳ Waiting for scan
-      </span>;
+      return <span className="text-blue-600 text-xs">⏳ Waiting for scan</span>;
     }
     if (status?.status === 'error') {
-      return <span className="text-red-600 text-xs">
-        ❌ {status.message}
-      </span>;
+      return <span className="text-red-600 text-xs">❌ {status.message}</span>;
     }
     return null;
   };
 
   if (loading) {
-    return <div className="text-center py-10">Loading students...</div>;
+    return <div className="text-center py-10 text-gray-500">Loading students...</div>;
   }
 
   return (
@@ -226,7 +211,6 @@ function Students() {
           <p className="text-sm text-slate-500">Manage students and assign fingerprint IDs</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Refresh Button */}
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -236,7 +220,11 @@ function Students() {
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              setEditingStudent(null);
+              setFormData({ nim: '', name: '', email: '', semester: '', academic_year: '', fingerprint_id: '' });
+              setShowForm(!showForm);
+            }}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -245,17 +233,21 @@ function Students() {
         </div>
       </div>
 
-      {/* Last Updated & Auto-refresh indicator */}
       <div className="flex items-center gap-4 mb-4 text-xs text-slate-400">
         <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
         <span className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+          Auto-refresh every 30s
         </span>
       </div>
 
-      {/* Form */}
+      {/* Add/Edit Student Form */}
       {showForm && (
         <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200">
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <h3 className="font-medium text-slate-700 mb-3">
+            {editingStudent ? 'Edit Student' : 'Add New Student'}
+          </h3>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <input
               type="text"
               placeholder="NIM"
@@ -279,6 +271,26 @@ function Students() {
               onChange={(e) => setFormData({...formData, email: e.target.value})}
               className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <select
+              value={formData.semester}
+              onChange={(e) => setFormData({...formData, semester: e.target.value})}
+              className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select Semester</option>
+              {semesterOptions.map(sem => (
+                <option key={sem} value={sem}>Semester {sem}</option>
+              ))}
+            </select>
+            <select
+              value={formData.academic_year}
+              onChange={(e) => setFormData({...formData, academic_year: e.target.value})}
+              className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Academic Year</option>
+              {academicYearOptions.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
             <input
               type="number"
               placeholder="Fingerprint ID (optional)"
@@ -286,18 +298,11 @@ function Students() {
               onChange={(e) => setFormData({...formData, fingerprint_id: e.target.value})}
               className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <div className="md:col-span-4 flex gap-2">
-              <button
-                type="submit"
-                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-              >
+            <div className="md:col-span-3 flex gap-2">
+              <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
                 {editingStudent ? 'Update Student' : 'Add Student'}
               </button>
-              <button
-                type="button"
-                onClick={cancelForm}
-                className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500"
-              >
+              <button type="button" onClick={cancelForm} className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500">
                 Cancel
               </button>
             </div>
@@ -305,7 +310,7 @@ function Students() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Students Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -314,6 +319,8 @@ function Students() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">NIM</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Name</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Email</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Semester</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Academic Year</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Fingerprint ID</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
@@ -322,7 +329,7 @@ function Students() {
             <tbody className="divide-y divide-gray-200">
               {students.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
                     No students found. Add your first student!
                   </td>
                 </tr>
@@ -332,6 +339,16 @@ function Students() {
                     <td className="px-4 py-3 text-sm">{student.nim}</td>
                     <td className="px-4 py-3 text-sm">{student.name}</td>
                     <td className="px-4 py-3 text-sm">{student.email || '-'}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {student.semester ? (
+                        <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-medium">
+                          Semester {student.semester}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">{student.academic_year || '-'}</td>
                     <td className="px-4 py-3 text-sm">
                       {student.fingerprint_id ? (
                         <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">
@@ -394,6 +411,13 @@ function Students() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
+        <span>💡 <strong>Enroll:</strong> Request fingerprint enrollment on ESP32</span>
+        <span>🔄 <strong>Re-enroll:</strong> Replace existing fingerprint</span>
+        <span>⏳ <strong>Waiting for scan:</strong> Student needs to scan on ESP32</span>
+        <span>🎓 <strong>Semester:</strong> Current semester of the student</span>
       </div>
     </div>
   );

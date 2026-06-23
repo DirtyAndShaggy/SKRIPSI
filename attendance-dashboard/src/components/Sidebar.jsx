@@ -12,6 +12,7 @@ import {
   LogOut,
   Fingerprint,
   Building,
+  User
 } from 'lucide-react';
 
 function Sidebar() {
@@ -29,17 +30,18 @@ function Sidebar() {
     { path: '/users', icon: Users2, label: 'Users', show: isAdmin },
     { path: '/devices', icon: Fingerprint, label: 'Devices', show: isAdmin },
     { path: '/rooms', icon: Building, label: 'Rooms', show: isAdmin },
+    { path: '/lecturers', icon: User, label: 'Lecturers', show: isAdmin },
   ];
 
   return (
     <div className="h-screen w-64 bg-slate-900 text-white flex flex-col fixed left-0 top-0">
-      {/* Logo */}
+      {/* Logo belum ada */}
       <div className="p-4 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <Fingerprint className="w-8 h-8 text-blue-400" />
           <div>
-            <h1 className="text-lg font-bold">Attendance</h1>
-            <p className="text-xs text-slate-400">Smart System</p>
+            <h1 className="text-lg font-bold">Dashboard</h1>
+            <p className="text-xs text-slate-400">Kehadiran Mahasiswa</p>
           </div>
         </div>
       </div>

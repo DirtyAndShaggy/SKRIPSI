@@ -33,12 +33,26 @@ export const attendanceAPI = {
   addStudent: (data) => api.post('/students/add.php', data),
   updateStudent: (id, data) => api.post('/students/update.php', { id, ...data }),
   deleteStudent: (id) => api.post('/students/delete.php', { id }),
+
+  // Lecturers
+  getLecturers: () => api.get('/lecturers/list.php'),
+  addLecturer: (data) => api.post('/lecturers/add.php', data),
+  updateLecturer: (id, data) => api.post('/lecturers/update.php', { lecturer_id: id, ...data }),
+  deleteLecturer: (id) => api.post('/lecturers/delete.php', { lecturer_id: id }),
+  getCurrentLecturer: () => {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.user_id) {
+    return api.get(`/lecturers/by_user.php?user_id=${user.user_id}`);
+  }
+  return Promise.reject('No user logged in');
+  },
   
   // Classes
   getClasses: () => api.get('/classes/list.php'),
   addClass: (data) => api.post('/classes/add.php', data),
   updateClass: (id, data) => api.post('/classes/update.php', { class_id: id, ...data }),
   deleteClass: (id) => api.post('/classes/delete.php', { class_id: id }),
+  updateClassStatus: (classId, status) => api.post('/classes/update_status.php', { class_id: classId, is_active: status }),
 
   // Schedules
   getAllSchedules: () => api.get('/schedules/list.php'),

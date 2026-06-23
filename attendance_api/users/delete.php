@@ -26,6 +26,9 @@ if ($adminCount['total'] == 0) {
     }
 }
 
+// Remove lecturer link
+mysqli_query($conn, "UPDATE lecturers SET user_id = NULL WHERE user_id = '$user_id'");
+
 $query = "DELETE FROM users WHERE user_id = '$user_id'";
 
 if (mysqli_query($conn, $query)) {

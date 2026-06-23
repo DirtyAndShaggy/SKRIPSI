@@ -1,71 +1,102 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Key, X, UserCog, Shield, User, Users as UsersIcon } from 'lucide-react';
+import { Plus, Edit2, Trash2, Key, X, RefreshCw, Users as UsersIcon, Shield, User, GraduationCap } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
 function Users() {
   const [users, setUsers] = useState([]);
+  const [lecturers, setLecturers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+  const [lastUpdated, setLastUpdated] = useState(new Date());
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     full_name: '',
-    role: 'lecturer'
+    role: 'lecturer',
+    lecturer_id: ''
   });
 
   useEffect(() => {
-    loadUsers();
+    loadData();
+    const interval = setInterval(() => loadData(false), 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const loadUsers = async () => {
-    setLoading(true);
+  const loadData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    else setRefreshing(true);
+    
     try {
-      // You'll need to create users/list.php endpoint
-      const response = await attendanceAPI.getUsers();
-      if (response.data.status === 'success') {
-        setUsers(response.data.users);
+      const usersResponse = await attendanceAPI.getUsers();
+      if (usersResponse.data.status === 'success') {
+        setUsers(usersResponse.data.users);
       }
+
+      const lecturersResponse = await attendanceAPI.getLecturers();
+      if (lecturersResponse.data.status === 'success') {
+        setLecturers(lecturersResponse.data.lecturers);
+      }
+      
+      setLastUpdated(new Date());
     } catch (err) {
-      console.error('Failed to load users', err);
-      // Use mock data for now if endpoint doesn't exist
-      setUsers([
-        { user_id: 1, email: 'admin@test.com', full_name: 'System Admin', role: 'admin', is_active: 1 },
-        { user_id: 2, email: 'lecturer@test.com', full_name: 'Demo Lecturer', role: 'lecturer', is_active: 1 },
-      ]);
+      console.error('Failed to load data', err);
+      if (showLoading) alert('Error loading data. Check if API is running.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
+
+  const handleRefresh = () => loadData(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     try {
-      if (editingUser) {
-        // Update user (without password)
-        await attendanceAPI.updateUser(editingUser.user_id, {
-          full_name: formData.full_name,
-          role: formData.role,
-          email: formData.email
-        });
-      } else {
-        // Create new user
-        await attendanceAPI.addUser(formData);
+      const data = {
+        email: formData.email,
+        full_name: formData.full_name,
+        role: formData.role,
+        lecturer_id: formData.role === 'lecturer' ? formData.lecturer_id : null
+      };
+      
+      if (!editingUser) {
+        data.password = formData.password;
       }
       
+      if (editingUser) {
+        await attendanceAPI.updateUser(editingUser.user_id, data);
+        alert('User updated successfully!');
+      } else {
+        await attendanceAPI.addUser(data);
+        alert('User created successfully!');
+      }
+      
+      setFormData({ email: '', password: '', full_name: '', role: 'lecturer', lecturer_id: '' });
       setShowForm(false);
       setEditingUser(null);
-      setFormData({ email: '', password: '', full_name: '', role: 'lecturer' });
-      loadUsers();
-      alert(editingUser ? 'User updated!' : 'User created!');
+      loadData();
     } catch (err) {
       console.error('Failed to save user', err);
-      alert('Error saving user');
+      alert('Error saving user. Please try again.');
     }
+  };
+
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setFormData({
+      email: user.email,
+      password: '',
+      full_name: user.full_name,
+      role: user.role,
+      lecturer_id: user.lecturer_info?.lecturer_id || ''
+    });
+    setShowForm(true);
   };
 
   const handleDelete = async (userId) => {
@@ -73,16 +104,19 @@ function Users() {
     
     try {
       await attendanceAPI.deleteUser(userId);
-      loadUsers();
-      alert('User deleted!');
+      loadData();
+      alert('User deleted successfully!');
     } catch (err) {
       console.error('Failed to delete user', err);
-      alert('Error deleting user');
+      alert('Error deleting user. Please try again.');
     }
   };
 
   const handleResetPassword = async () => {
-    if (!selectedUserId) return;
+    if (!selectedUserId || !newPassword) {
+      alert('Please enter a new password');
+      return;
+    }
     
     try {
       await attendanceAPI.resetPassword(selectedUserId, newPassword);
@@ -92,7 +126,7 @@ function Users() {
       alert('Password reset successfully!');
     } catch (err) {
       console.error('Failed to reset password', err);
-      alert('Error resetting password');
+      alert('Error resetting password. Please try again.');
     }
   };
 
@@ -105,14 +139,14 @@ function Users() {
   const cancelForm = () => {
     setShowForm(false);
     setEditingUser(null);
-    setFormData({ email: '', password: '', full_name: '', role: 'lecturer' });
+    setFormData({ email: '', password: '', full_name: '', role: 'lecturer', lecturer_id: '' });
   };
 
   const getRoleBadge = (role) => {
     if (role === 'admin') {
-      return <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-medium">Admin</span>;
+      return <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1"><Shield className="w-3 h-3" /> Admin</span>;
     }
-    return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">Lecturer</span>;
+    return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1"><User className="w-3 h-3" /> Lecturer</span>;
   };
 
   if (loading) {
@@ -128,103 +162,123 @@ function Users() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-start flex-wrap gap-4 mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">User Management</h1>
-          <p className="text-slate-500">Manage system users and their permissions</p>
+          <h2 className="text-2xl font-bold text-slate-800">User Management</h2>
+          <p className="text-sm text-slate-500">Manage system users and their roles</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add User
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="bg-slate-200 text-slate-700 px-3 py-2 rounded-lg hover:bg-slate-300 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button
+            onClick={() => {
+              setEditingUser(null);
+              setFormData({ email: '', password: '', full_name: '', role: 'lecturer', lecturer_id: '' });
+              setShowForm(!showForm);
+            }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            {showForm ? 'Cancel' : 'Add User'}
+          </button>
+        </div>
       </div>
 
-      {/* Add/Edit User Form Modal */}
+      {/* Last Updated */}
+      <div className="flex items-center gap-4 mb-4 text-xs text-slate-400">
+        <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
+        <span className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+          Auto-refresh every 30s
+        </span>
+        <span className="text-slate-300">|</span>
+        <span>{users.length} users</span>
+      </div>
+
+      {/* Add/Edit User Form */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">
-                {editingUser ? 'Edit User' : 'Add New User'}
-              </h2>
-              <button
-                onClick={cancelForm}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
+        <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200">
+          <h3 className="font-medium text-slate-700 mb-3">
+            {editingUser ? 'Edit User' : 'Add New User'}
+          </h3>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input
+              type="email"
+              placeholder="Email"
+              value={formData.email}
+              onChange={(e) => setFormData({...formData, email: e.target.value})}
+              className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+            {!editingUser && (
+              <input
+                type="password"
+                placeholder="Password"
+                value={formData.password}
+                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required={!editingUser}
+                minLength={6}
+              />
+            )}
+            <input
+              type="text"
+              placeholder="Full Name"
+              value={formData.full_name}
+              onChange={(e) => setFormData({...formData, full_name: e.target.value})}
+              className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+            <select
+              value={formData.role}
+              onChange={(e) => {
+                setFormData({...formData, role: e.target.value, lecturer_id: ''});
+              }}
+              className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="lecturer">Lecturer</option>
+              <option value="admin">Admin</option>
+            </select>
+            
+            {formData.role === 'lecturer' && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Link to Lecturer Profile</label>
+                <select
+                  value={formData.lecturer_id}
+                  onChange={(e) => setFormData({...formData, lecturer_id: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Lecturer (optional)</option>
+                  {lecturers
+                    .filter(l => !l.user_id || l.user_id === (editingUser?.lecturer_info?.lecturer_id))
+                    .map(lec => (
+                      <option key={lec.lecturer_id} value={lec.lecturer_id}>
+                        {lec.lecturer_code} - {lec.full_name} {lec.department ? `(${lec.department})` : ''}
+                        {lec.user_id ? ' (Linked)' : ''}
+                      </option>
+                    ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  Link this user account to an existing lecturer profile
+                </p>
+              </div>
+            )}
+
+            <div className="md:col-span-2 flex gap-2">
+              <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                {editingUser ? 'Update User' : 'Create User'}
+              </button>
+              <button type="button" onClick={cancelForm} className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500">
+                Cancel
               </button>
             </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                <input
-                  type="text"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({...formData, full_name: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              {!editingUser && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required={!editingUser}
-                    minLength={6}
-                  />
-                  <p className="text-xs text-slate-400 mt-1">Minimum 6 characters</p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({...formData, role: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="lecturer">Lecturer</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  {editingUser ? 'Update User' : 'Create User'}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelForm}
-                  className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
+          </form>
         </div>
       )}
 
@@ -233,39 +287,43 @@ function Users() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Reset Password</h2>
+              <h3 className="text-lg font-bold text-slate-800">Reset Password</h3>
               <button
-                onClick={() => setShowResetPassword(false)}
+                onClick={() => {
+                  setShowResetPassword(false);
+                  setSelectedUserId(null);
+                  setNewPassword('');
+                }}
                 className="text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <p className="text-sm text-slate-600 mb-4">
-              Enter a new password for this user. They will need to use this password to login.
+              Enter a new password for this user.
             </p>
-
             <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password"
+              placeholder="New password (min 6 chars)"
               className="w-full border rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
               minLength={6}
-              required
             />
-
             <div className="flex gap-3">
               <button
                 onClick={handleResetPassword}
-                className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
               >
                 Reset Password
               </button>
               <button
-                onClick={() => setShowResetPassword(false)}
-                className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300 transition-colors"
+                onClick={() => {
+                  setShowResetPassword(false);
+                  setSelectedUserId(null);
+                  setNewPassword('');
+                }}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300"
               >
                 Cancel
               </button>
@@ -274,32 +332,33 @@ function Users() {
         </div>
       )}
 
-      {/* User Table */}
-      <div className="bg-white rounded-xl border overflow-hidden">
+      {/* Users Table */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-slate-50">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">#</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Name</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Email</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Role</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Actions</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">#</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Full Name</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Email</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Role</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Lecturer</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-gray-200">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-8 text-center text-slate-400">
-                    <UsersIcon className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                  <td colSpan="7" className="px-4 py-8 text-center text-gray-400">
+                    <UsersIcon className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                     No users found
                   </td>
                 </tr>
               ) : (
                 users.map((user, index) => (
-                  <tr key={user.user_id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-sm text-slate-500">{index + 1}</td>
+                  <tr key={user.user_id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
                     <td className="px-4 py-3 text-sm font-medium">{user.full_name}</td>
                     <td className="px-4 py-3 text-sm">{user.email}</td>
                     <td className="px-4 py-3 text-sm">{getRoleBadge(user.role)}</td>
@@ -309,31 +368,36 @@ function Users() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm">
+                      {user.role === 'lector' && user.lecturer_info ? (
+                        <span className="text-xs text-blue-600">
+                          {user.lecturer_info.lecturer_code}
+                        </span>
+                      ) : user.role === 'lecturer' && !user.lecturer_info ? (
+                        <span className="text-xs text-yellow-600">Not linked</span>
+                      ) : (
+                        <span className="text-xs text-green-600">Linked</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
                       <div className="flex gap-1">
                         <button
-                          onClick={() => {
-                            setEditingUser(user);
-                            setFormData({
-                              email: user.email,
-                              full_name: user.full_name,
-                              role: user.role,
-                              password: ''
-                            });
-                            setShowForm(true);
-                          }}
+                          onClick={() => handleEdit(user)}
                           className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
+                          title="Edit user"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => openResetPassword(user.user_id)}
                           className="text-yellow-600 hover:text-yellow-800 p-1 hover:bg-yellow-50 rounded"
+                          title="Reset password"
                         >
                           <Key className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(user.user_id)}
                           className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
+                          title="Delete user"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -345,6 +409,14 @@ function Users() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Legend */}
+      <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
+        <span>👑 <strong>Admin:</strong> Full system access</span>
+        <span>👨‍🏫 <strong>Lecturer:</strong> Access to their classes only</span>
+        <span>🔑 <strong>Reset Password:</strong> Generate new password</span>
+        <span>🔗 <strong>Linked:</strong> Lecturer account is connected to user</span>
       </div>
     </div>
   );
