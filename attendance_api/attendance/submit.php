@@ -1,6 +1,5 @@
 <?php
-include("../cors_headers.php");
-include("../config/database.php");
+
 header("Content-Type: application/json");
 date_default_timezone_set('Asia/Jakarta');
 include("../config/database.php");
@@ -32,10 +31,7 @@ function writeLog($conn, $device_id, $fingerprint_id, $student_id, $event_type, 
 $data = json_decode(file_get_contents("php://input"), true);
 
 if (!$data) {
-    echo json_encode([
-        "status" => "error",
-        "message" => "No input data received"
-    ]);
+    echo json_encode(["status" => "error", "message" => "No input data received"]);
     exit;
 }
 
@@ -43,19 +39,17 @@ $fingerprint_id = $data['fingerprint_id'] ?? null;
 $device_id = $data['device_id'] ?? null;
 
 if (!$fingerprint_id || !$device_id) {
-    if (isset($conn)) {
-        writeLog(
-            $conn,
-            $device_id ?? 'UNKNOWN',
-            $fingerprint_id ?? 0,
-            null,
-            'invalid_request',
-            'Missing fingerprint_id or device_id'
-        );
-    }
+    writeLog(
+        $conn,
+        $device_id ?? 'UNKNOWN',
+        $fingerprint_id ?? 0,
+        null,
+        'invalid_request',
+        'Missing fingerprint_id or device_id'
+    );
 
     echo json_encode([
-        "status" => "error",
+        "status" => "rejected",
         "message" => "Missing fingerprint_id or device_id"
     ]);
     exit;
@@ -64,7 +58,7 @@ if (!$fingerprint_id || !$device_id) {
 /* -----------------------------
    1. Find Student
 ----------------------------- */
-$studentQuery = "SELECT student_id, name FROM students WHERE fingerprint_id = '$fingerprint_id'";
+$studentQuery = "SELECT student_id, name, nim FROM students WHERE fingerprint_id = '$fingerprint_id'";
 $studentResult = mysqli_query($conn, $studentQuery);
 
 if (!$studentResult || mysqli_num_rows($studentResult) === 0) {
@@ -86,19 +80,27 @@ if (!$studentResult || mysqli_num_rows($studentResult) === 0) {
 
 $student = mysqli_fetch_assoc($studentResult);
 $student_id = $student['student_id'];
+$student_name = $student['name'];
 
 /* -----------------------------
-   2. Find Active Schedule
+   2. Find Active Schedule for this Device
 ----------------------------- */
-$today = date("l");
+$today = date("l"); // Monday, Tuesday, etc.
 $currentTime = date("H:i:s");
 
 $scheduleQuery = "
-SELECT class_id, schedule_id, start_time, end_time
-FROM class_schedules
-WHERE device_id = '$device_id'
-AND day_of_week = '$today'
-AND '$currentTime' BETWEEN start_time AND end_time
+SELECT 
+    cs.schedule_id, 
+    cs.class_id, 
+    cs.start_time, 
+    cs.end_time,
+    c.class_name,
+    c.class_code
+FROM class_schedules cs
+JOIN classes c ON cs.class_id = c.class_id
+WHERE cs.device_id = '$device_id'
+AND cs.day_of_week = '$today'
+AND '$currentTime' BETWEEN cs.start_time AND cs.end_time
 LIMIT 1
 ";
 
@@ -122,42 +124,41 @@ if (!$scheduleResult || mysqli_num_rows($scheduleResult) === 0) {
 }
 
 $schedule = mysqli_fetch_assoc($scheduleResult);
-$class_id = $schedule['class_id'];
 $schedule_id = $schedule['schedule_id'];
+$class_id = $schedule['class_id'];
+$class_name = $schedule['class_name'];
 $schedule_start = $schedule['start_time'];
 
 /* -----------------------------
-   3. Validate Enrollment (Active only)
+   3. Check if Student is ASSIGNED to this Schedule (NEW!)
 ----------------------------- */
-$enrollmentQuery = "
-SELECT id
-FROM student_classes
-WHERE student_id = '$student_id'
-AND class_id = '$class_id'
-AND (is_active = 1 OR is_active IS NULL)
+$assignmentQuery = "
+SELECT id FROM schedule_students 
+WHERE schedule_id = '$schedule_id' 
+AND student_id = '$student_id'
 ";
 
-$enrollmentResult = mysqli_query($conn, $enrollmentQuery);
+$assignmentResult = mysqli_query($conn, $assignmentQuery);
 
-if (!$enrollmentResult || mysqli_num_rows($enrollmentResult) === 0) {
+if (!$assignmentResult || mysqli_num_rows($assignmentResult) === 0) {
     writeLog(
         $conn,
         $device_id,
         $fingerprint_id,
         $student_id,
-        'not_enrolled',
-        "Student not enrolled in this class"
+        'not_assigned_to_schedule',
+        "Student $student_name (ID: $student_id) not assigned to schedule $schedule_id"
     );
 
     echo json_encode([
         "status" => "rejected",
-        "message" => "Student not enrolled in this class"
+        "message" => "Student not enrolled in this class session"
     ]);
     exit;
 }
 
 /* -----------------------------
-   4. Duplicate Prevention (Check specific session)
+   4. Check for Duplicate Attendance (Same schedule, same day)
 ----------------------------- */
 $dateToday = date("Y-m-d");
 
@@ -178,20 +179,20 @@ if ($duplicateResult && mysqli_num_rows($duplicateResult) > 0) {
         $fingerprint_id,
         $student_id,
         'duplicate_attendance',
-        "Already attended this session (Schedule ID: $schedule_id)"
+        "Already attended schedule $schedule_id today"
     );
 
     echo json_encode([
         "status" => "rejected",
-        "message" => "Already checked in for this session"
+        "message" => "Attendance already recorded for this session"
     ]);
     exit;
 }
 
 /* -----------------------------
-   4.5 Late Detection
+   5. Late Detection
 ----------------------------- */
-$grace_minutes = 15; // Configurable grace period
+$grace_minutes = 15; // Configurable
 $late_threshold = date("H:i:s", strtotime("$schedule_start + $grace_minutes minutes"));
 
 if ($currentTime > $late_threshold) {
@@ -209,7 +210,7 @@ if ($currentTime > $late_threshold) {
 }
 
 /* -----------------------------
-   5. Store Attendance
+   6. Store Attendance
 ----------------------------- */
 $timestamp = date("Y-m-d H:i:s");
 
@@ -234,7 +235,9 @@ if (mysqli_query($conn, $insertQuery)) {
 
     echo json_encode([
         "status" => "success",
-        "message" => "Attendance recorded as " . $attendance_status
+        "message" => "Attendance recorded as " . $attendance_status,
+        "student_name" => $student_name,
+        "class_name" => $class_name
     ]);
 
 } else {
@@ -254,5 +257,4 @@ if (mysqli_query($conn, $insertQuery)) {
 }
 
 mysqli_close($conn);
-
 ?>

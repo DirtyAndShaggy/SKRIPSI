@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isSameWeek } from 'date-fns';
+import attendanceAPI from '../api/attendance';
 import { 
   Plus, Edit2, Trash2, X, RefreshCw, 
   Calendar as CalendarIcon, Clock, Building, Filter,
   ChevronLeft, ChevronRight, List,
   LayoutGrid, Users, UserPlus, UserMinus,
-  Search, ChevronDown, ChevronUp
+  Search, ChevronDown, ChevronUp, AlertCircle
 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isSameWeek } from 'date-fns';
-import attendanceAPI from '../api/attendance';
 
 function Schedules() {
   const [schedules, setSchedules] = useState([]);
@@ -26,6 +26,8 @@ function Schedules() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [expandedSchedule, setExpandedSchedule] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [timeError, setTimeError] = useState('');
+  const [isOvernight, setIsOvernight] = useState(false);
   const [filters, setFilters] = useState({
     class_id: '',
     day_of_week: '',
@@ -45,6 +47,65 @@ function Schedules() {
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const semesterOptions = ['1', '2', '3', '4', '5', '6', '7', '8'];
+
+  // Helper functions - place these before the StudentAssignmentModal component
+const calculateDuration = (start, end) => {
+  if (!start || !end) return '';
+  
+  const startMinutes = parseInt(start.split(':')[0]) * 60 + parseInt(start.split(':')[1]);
+  const endMinutes = parseInt(end.split(':')[0]) * 60 + parseInt(end.split(':')[1]);
+  
+  // For same-day schedules only
+  if (endMinutes <= startMinutes) {
+    return 'Invalid (end time must be after start time)';
+  }
+  
+  const diffMinutes = endMinutes - startMinutes;
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+  
+  return `${hours}h ${minutes}m`;
+};
+
+const validateTimes = (start, end) => {
+  if (!start || !end) {
+    setTimeError('');
+    setIsOvernight(false);
+    return;
+  }
+  
+  const startMinutes = parseInt(start.split(':')[0]) * 60 + parseInt(start.split(':')[1]);
+  const endMinutes = parseInt(end.split(':')[0]) * 60 + parseInt(end.split(':')[1]);
+  
+  // Validation rules
+  if (startMinutes === endMinutes) {
+    setTimeError('Start and end time cannot be the same');
+    setIsOvernight(false);
+    return;
+  }
+  
+  if (endMinutes < startMinutes) {
+    setTimeError('❌ Class cannot end after midnight (overnight schedules are not allowed)');
+    setIsOvernight(false);
+    return;
+  }
+  
+  if (endMinutes - startMinutes > 12 * 60) {
+    setTimeError('Class duration cannot exceed 12 hours');
+    setIsOvernight(false);
+    return;
+  }
+  
+  if (endMinutes - startMinutes < 30) {
+    setTimeError('Class duration must be at least 30 minutes');
+    setIsOvernight(false);
+    return;
+  }
+  
+  // All valid
+  setTimeError('');
+  setIsOvernight(false);
+};
 
   useEffect(() => {
     loadData();
@@ -795,7 +856,9 @@ function Schedules() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Class Selection */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Class</label>
                 <select
@@ -812,6 +875,8 @@ function Schedules() {
                   ))}
                 </select>
               </div>
+
+              {/* Room Selection */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Room</label>
                 <select
@@ -827,6 +892,8 @@ function Schedules() {
                   ))}
                 </select>
               </div>
+
+              {/* Day of Week */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Day of Week</label>
                 <select
@@ -840,28 +907,67 @@ function Schedules() {
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
-                  <input
-                    type="time"
-                    value={formData.start_time}
-                    onChange={(e) => setFormData({...formData, start_time: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
+
+              {/* Time with Validation - No Overnight */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
+                    <input
+                      type="time"
+                      value={formData.start_time}
+                      onChange={(e) => {
+                        setFormData({...formData, start_time: e.target.value});
+                        validateTimes(e.target.value, formData.end_time);
+                      }}
+                      className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
+                    <input
+                      type="time"
+                      value={formData.end_time}
+                      onChange={(e) => {
+                        setFormData({...formData, end_time: e.target.value});
+                        validateTimes(formData.start_time, e.target.value);
+                      }}
+                      className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        timeError ? 'border-red-500 bg-red-50' : ''
+                      }`}
+                      required
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
-                  <input
-                    type="time"
-                    value={formData.end_time}
-                    onChange={(e) => setFormData({...formData, end_time: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
+
+                {/* Time Validation Messages */}
+                {timeError && (
+                  <div className="text-sm text-red-600 bg-red-50 p-2 rounded-lg flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {timeError}
+                  </div>
+                )}
+
+                {!timeError && formData.start_time && formData.end_time && (
+                  <div className="text-sm text-green-600 bg-green-50 p-2 rounded-lg flex items-center gap-2">
+                    <Clock className="w-4 h-4" />
+                    Duration: {calculateDuration(formData.start_time, formData.end_time)}
+                  </div>
+                )}
+
+                <div className="text-xs text-slate-400 bg-slate-50 p-2 rounded-lg">
+                  ⏰ <strong>Rules:</strong>
+                  <ul className="list-disc list-inside mt-1 space-y-0.5">
+                    <li>Class must start and end on the same day</li>
+                    <li>Minimum duration: 30 minutes</li>
+                    <li>Maximum duration: 12 hours</li>
+                    <li>End time must be after start time</li>
+                  </ul>
                 </div>
               </div>
+
+              {/* Semester */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>
                 <select
@@ -875,6 +981,8 @@ function Schedules() {
                   ))}
                 </select>
               </div>
+
+              {/* Device ID */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Device ID</label>
                 <input
@@ -886,14 +994,34 @@ function Schedules() {
                   required
                 />
               </div>
+
+              {/* Submit Buttons */}
               <div className="flex gap-3 pt-2">
-                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                <button
+                  type="submit"
+                  disabled={!!timeError}
+                  className={`flex-1 py-2 rounded-lg transition-colors ${
+                    timeError 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
                   {editingSchedule ? 'Update Schedule' : 'Add Schedule'}
                 </button>
-                <button type="button" onClick={cancelForm} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300">
+                <button
+                  type="button"
+                  onClick={cancelForm}
+                  className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300"
+                >
                   Cancel
                 </button>
               </div>
+
+              {timeError && (
+                <div className="text-xs text-red-500 text-center">
+                  Please fix the time error before saving
+                </div>
+              )}
             </form>
           </div>
         </div>
@@ -905,8 +1033,12 @@ function Schedules() {
       {/* CALENDAR VIEW */}
       {viewMode === 'week' ? (
         <div className="bg-white rounded-xl border overflow-hidden">
+          {/* Week Navigation */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <button onClick={() => navigateWeek(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
+            <button
+              onClick={() => navigateWeek(-1)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-4">
@@ -914,15 +1046,22 @@ function Schedules() {
                 {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMM d')} - 
                 {format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMM d, yyyy')}
               </span>
-              <button onClick={() => setSelectedDate(new Date())} className="text-sm text-blue-600 hover:text-blue-800">
+              <button
+                onClick={() => setSelectedDate(new Date())}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
                 Today
               </button>
             </div>
-            <button onClick={() => navigateWeek(1)} className="p-2 hover:bg-gray-100 rounded-lg">
+            <button
+              onClick={() => navigateWeek(1)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
 
+          {/* Calendar Grid */}
           <div className="grid grid-cols-7 divide-x divide-gray-200">
             {getWeekDays().map((date, idx) => {
               const daySchedules = getSchedulesForDay(date);
@@ -936,7 +1075,7 @@ function Schedules() {
                       {format(date, 'd')}
                     </div>
                   </div>
-                  <div className="p-2 space-y-2">
+                  <div className="p-2 space-y-2 max-h-[300px] overflow-y-auto">
                     {daySchedules.length === 0 ? (
                       <div className="text-xs text-gray-400 text-center py-4">No classes</div>
                     ) : (
@@ -948,13 +1087,53 @@ function Schedules() {
                               ? 'bg-green-50 border-green-200' 
                               : 'bg-white border-gray-200'
                           }`}
-                          onClick={() => handleEdit(schedule)}
                         >
-                          <div className="font-medium text-gray-800">{schedule.class_code}</div>
-                          <div className="text-gray-500">{schedule.start_time} - {schedule.end_time}</div>
+                          <div className="flex items-center justify-between">
+                            <div className="font-medium text-gray-800">{schedule.class_code}</div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-gray-400 text-[10px]">{schedule.student_count || 0} students</span>
+                            </div>
+                          </div>
+                          <div className="text-gray-500 text-[10px]">
+                            {schedule.start_time} - {schedule.end_time}
+                          </div>
                           <div className="flex items-center justify-between mt-1">
                             <span className="text-gray-400 text-[10px]">{schedule.room_code || 'No room'}</span>
-                            <span className="text-blue-500 text-[10px]">{schedule.student_count || 0} students</span>
+                            <div className="flex gap-1">
+                              {/* Edit button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEdit(schedule);
+                                }}
+                                className="text-blue-500 hover:text-blue-700 p-0.5 rounded"
+                                title="Edit schedule"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                              {/* Manage Students button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleManageStudents(schedule);
+                                }}
+                                className="text-green-500 hover:text-green-700 p-0.5 rounded"
+                                title="Manage students"
+                              >
+                                <Users className="w-3 h-3" />
+                              </button>
+                              {/* Delete button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(schedule.schedule_id);
+                                }}
+                                className="text-red-400 hover:text-red-600 p-0.5 rounded"
+                                title="Delete schedule"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -1076,9 +1255,9 @@ function Schedules() {
         </div>
         <div className="bg-white p-3 rounded-lg border text-center">
           <div className="text-2xl font-bold text-teal-600">
-            {schedules.reduce((acc, s) => acc + (s.student_count || 0), 0)}
+            {schedules.reduce((acc, s) => acc + Number(s.student_count || 0), 0)}
           </div>
-          <div className="text-xs text-gray-500">Total Assignments</div>
+          <div className="text-xs text-gray-500">Total Assigned Students</div>
         </div>
       </div>
     </div>
