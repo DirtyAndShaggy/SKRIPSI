@@ -113,6 +113,25 @@ export const attendanceAPI = {
   updateUser: (userId, data) => api.post('/users/update.php', { user_id: userId, ...data }),
   deleteUser: (userId) => api.post('/users/delete.php', { user_id: userId }),
   resetPassword: (userId, newPassword) => api.post('/users/reset_password.php', { user_id: userId, new_password: newPassword }),
+
+  // ─── DEVICES ───
+  getDevices: () => api.get('/devices/list.php'),
+  getCommandResult: (deviceId, commandType) => 
+  api.get(`/admin/get_command_result.php?device_id=${deviceId}&command_type=${commandType}`),
+  // Send command to device
+  sendDeviceCommand: (deviceId, commandType, commandValue = '') => 
+    api.post('/admin/fingerprint.php?action=queue', { 
+      device_id: deviceId, 
+      command_type: commandType,
+      command_value: commandValue
+    }),
+  // Get device status (for ping)
+  getDeviceStatus: (deviceId) => api.get(`/devices/status.php?device_id=${deviceId}`),
+  // Get slot list from device (after sync)
+  getDeviceSlots: (deviceId) => api.get(`/admin/fingerprint.php?action=get_slots&device_id=${deviceId}`),
+
 };
+
+
 
 export default attendanceAPI;
