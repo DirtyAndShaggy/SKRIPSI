@@ -58,8 +58,19 @@ export const attendanceAPI = {
   getAllSchedules: () => api.get('/schedules/list.php'),
   getSchedules: (classId) => api.get(`/schedules/list.php?class_id=${classId}`),
   addSchedule: (data) => api.post('/schedules/add.php', data),
-  deleteSchedule: (scheduleId) => api.post('/schedules/delete.php', { schedule_id: scheduleId }),
   updateSchedule: (scheduleId, data) => api.post('/schedules/update.php', { schedule_id: scheduleId, ...data }),
+  deleteSchedule: (scheduleId) => api.post('/schedules/delete.php', { schedule_id: scheduleId }),
+  getTodaySchedule: (deviceId = 'ESP32_01') => {
+    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
+    return api.get(`/schedules/today.php?day=${dayName}&device_id=${deviceId}`);
+  },
+
+  // Schedule Students
+  getScheduleStudents: (scheduleId) => api.get(`/schedules/get_students.php?schedule_id=${scheduleId}`),
+  assignStudentsToSchedule: (scheduleId, studentIds) => api.post('/schedules/assign_students.php', { 
+    schedule_id: scheduleId, 
+    student_ids: studentIds 
+  }), 
   
   // Rooms
   getRooms: () => api.get('/rooms/list.php'),

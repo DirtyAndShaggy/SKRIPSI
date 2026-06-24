@@ -10,6 +10,11 @@ if (!$schedule_id) {
     exit;
 }
 
+// First delete all student assignments for this schedule
+$deleteStudents = "DELETE FROM schedule_students WHERE schedule_id = '$schedule_id'";
+mysqli_query($conn, $deleteStudents);
+
+// Then delete the schedule
 $query = "DELETE FROM class_schedules WHERE schedule_id = '$schedule_id'";
 
 if (mysqli_query($conn, $query)) {

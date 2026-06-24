@@ -25,6 +25,7 @@ if (mysqli_num_rows($checkResult) > 0) {
     exit;
 }
 
+// Update user
 $query = "UPDATE users SET 
           email = '$email',
           full_name = '$full_name',
@@ -33,18 +34,13 @@ $query = "UPDATE users SET
           WHERE user_id = '$user_id'";
 
 if (mysqli_query($conn, $query)) {
-    // Update lecturer link if role is lecturer
-    if ($role === 'lecturer') {
-        // Clear existing lecturer link for this user
-        mysqli_query($conn, "UPDATE lecturers SET user_id = NULL WHERE user_id = '$user_id'");
-        
-        // Link to new lecturer profile if provided
-        if ($lecturer_id) {
-            mysqli_query($conn, "UPDATE lecturers SET user_id = '$user_id' WHERE lecturer_id = '$lecturer_id'");
-        }
-    } else {
-        // If admin, remove lecturer link
-        mysqli_query($conn, "UPDATE lecturers SET user_id = NULL WHERE user_id = '$user_id'");
+    // Clear existing lecturer link for this user
+    mysqli_query($conn, "UPDATE lecturers SET user_id = NULL WHERE user_id = '$user_id'");
+    
+    // If role is lecturer and lecturer_id is provided, link to lecturer profile
+    if ($role === 'lecturer' && $lecturer_id) {
+        $updateLecturer = "UPDATE lecturers SET user_id = '$user_id' WHERE lecturer_id = '$lecturer_id'";
+        mysqli_query($conn, $updateLecturer);
     }
     
     echo json_encode(["status" => "success", "message" => "User updated"]);

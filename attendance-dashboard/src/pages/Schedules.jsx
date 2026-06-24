@@ -1,28 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Edit2, Trash2, X, RefreshCw, 
-  Calendar, Clock, Building, Filter,
+  Calendar as CalendarIcon, Clock, Building, Filter,
   ChevronLeft, ChevronRight, List,
-  LayoutGrid, AlertCircle
+  LayoutGrid, Users, UserPlus, UserMinus,
+  Search, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, isSameWeek } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isSameWeek } from 'date-fns';
 import attendanceAPI from '../api/attendance';
 
 function Schedules() {
   const [schedules, setSchedules] = useState([]);
   const [classes, setClasses] = useState([]);
   const [rooms, setRooms] = useState([]);
+  const [lecturers, setLecturers] = useState([]);
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showStudentModal, setShowStudentModal] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
+  const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [viewMode, setViewMode] = useState('week'); // 'week' or 'list'
+  const [viewMode, setViewMode] = useState('week');
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [expandedSchedule, setExpandedSchedule] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     class_id: '',
     day_of_week: '',
-    room_id: ''
+    room_id: '',
+    semester: ''
   });
   const [showFilters, setShowFilters] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,10 +39,12 @@ function Schedules() {
     day_of_week: 'Monday',
     start_time: '08:00',
     end_time: '10:00',
-    device_id: 'ESP32_01'
+    device_id: 'ESP32_01',
+    semester: ''
   });
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const semesterOptions = ['1', '2', '3', '4', '5', '6', '7', '8'];
 
   useEffect(() => {
     loadData();
@@ -43,11 +53,8 @@ function Schedules() {
   }, []);
 
   const loadData = async (showLoading = true) => {
-    if (showLoading) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
+    if (showLoading) setLoading(true);
+    else setRefreshing(true);
     
     try {
       const classesResponse = await attendanceAPI.getClasses();
@@ -60,6 +67,16 @@ function Schedules() {
         setRooms(roomsResponse.data.rooms);
       }
 
+      const lecturersResponse = await attendanceAPI.getLecturers();
+      if (lecturersResponse.data.status === 'success') {
+        setLecturers(lecturersResponse.data.lecturers);
+      }
+
+      const studentsResponse = await attendanceAPI.getStudents();
+      if (studentsResponse.data.status === 'success') {
+        setStudents(studentsResponse.data.students);
+      }
+
       const schedulesResponse = await attendanceAPI.getAllSchedules();
       if (schedulesResponse.data.status === 'success') {
         setSchedules(schedulesResponse.data.schedules);
@@ -68,18 +85,14 @@ function Schedules() {
       setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to load data', err);
-      if (showLoading) {
-        alert('Error loading data. Check if API is running.');
-      }
+      if (showLoading) alert('Error loading data. Check if API is running.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const handleRefresh = () => {
-    loadData(false);
-  };
+  const handleRefresh = () => loadData(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -91,7 +104,8 @@ function Schedules() {
         day_of_week: formData.day_of_week,
         start_time: formData.start_time,
         end_time: formData.end_time,
-        device_id: formData.device_id
+        device_id: formData.device_id,
+        semester: formData.semester || null
       };
       
       if (editingSchedule) {
@@ -108,7 +122,8 @@ function Schedules() {
         day_of_week: 'Monday',
         start_time: '08:00',
         end_time: '10:00',
-        device_id: 'ESP32_01'
+        device_id: 'ESP32_01',
+        semester: ''
       });
       setShowForm(false);
       setEditingSchedule(null);
@@ -127,7 +142,8 @@ function Schedules() {
       day_of_week: schedule.day_of_week,
       start_time: schedule.start_time,
       end_time: schedule.end_time,
-      device_id: schedule.device_id || 'ESP32_01'
+      device_id: schedule.device_id || 'ESP32_01',
+      semester: schedule.semester || ''
     });
     setShowForm(true);
   };
@@ -145,6 +161,32 @@ function Schedules() {
     }
   };
 
+  const handleManageStudents = (schedule) => {
+  console.log('=== handleManageStudents called ===');
+  console.log('Schedule object:', schedule);
+  console.log('Schedule ID:', schedule?.schedule_id);
+  
+  if (!schedule || !schedule.schedule_id) {
+    console.error('Invalid schedule or missing schedule_id');
+    alert('Error: Schedule ID is missing. Please refresh and try again.');
+    return;
+  }
+  
+  setSelectedSchedule(schedule);
+  setShowStudentModal(true);
+};
+
+  const handleAssignStudents = async (scheduleId, selectedStudentIds) => {
+    try {
+      await attendanceAPI.assignStudentsToSchedule(scheduleId, selectedStudentIds);
+      loadData();
+      alert('Students assigned successfully!');
+    } catch (err) {
+      console.error('Failed to assign students', err);
+      alert('Error assigning students. Please try again.');
+    }
+  };
+
   const cancelForm = () => {
     setShowForm(false);
     setEditingSchedule(null);
@@ -154,20 +196,38 @@ function Schedules() {
       day_of_week: 'Monday',
       start_time: '08:00',
       end_time: '10:00',
-      device_id: 'ESP32_01'
+      device_id: 'ESP32_01',
+      semester: ''
     });
   };
 
   const getFilteredSchedules = () => {
-    return schedules.filter(schedule => {
-      if (filters.class_id && schedule.class_id !== parseInt(filters.class_id)) return false;
-      if (filters.day_of_week && schedule.day_of_week !== filters.day_of_week) return false;
-      if (filters.room_id && schedule.room_id !== parseInt(filters.room_id)) return false;
-      return true;
-    });
+    let filtered = schedules;
+    
+    if (searchTerm) {
+      filtered = filtered.filter(s => 
+        s.class_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.class_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.lecturer_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    if (filters.class_id) {
+      filtered = filtered.filter(s => s.class_id === parseInt(filters.class_id));
+    }
+    if (filters.day_of_week) {
+      filtered = filtered.filter(s => s.day_of_week === filters.day_of_week);
+    }
+    if (filters.room_id) {
+      filtered = filtered.filter(s => s.room_id === parseInt(filters.room_id));
+    }
+    if (filters.semester) {
+      filtered = filtered.filter(s => s.semester === filters.semester);
+    }
+    
+    return filtered;
   };
 
-  // Get week days for calendar view
   const getWeekDays = () => {
     const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
     const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -179,26 +239,17 @@ function Schedules() {
     return getFilteredSchedules().filter(s => s.day_of_week === dayName);
   };
 
-  const getClassInfo = (classId) => {
-    return classes.find(c => c.class_id === classId);
-  };
-
-  const getRoomInfo = (roomId) => {
-    return rooms.find(r => r.room_id === roomId);
-  };
-
   const getStatusBadge = (startTime, endTime, dayOfWeek) => {
     const now = new Date();
     const today = format(now, 'EEEE');
     const currentTime = format(now, 'HH:mm');
     
     if (dayOfWeek === today && currentTime >= startTime && currentTime <= endTime) {
-      return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium">● Active</span>;
+      return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>Active</span>;
     }
     return <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full text-xs font-medium">Scheduled</span>;
   };
 
-  // Navigate week
   const navigateWeek = (direction) => {
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() + (direction * 7));
@@ -206,6 +257,371 @@ function Schedules() {
   };
 
   const filteredSchedules = getFilteredSchedules();
+
+  // Student Assignment Component
+  const StudentAssignmentModal = () => {
+    if (!showStudentModal || !selectedSchedule) return null;
+
+    const [availableStudents, setAvailableStudents] = useState([]);
+    const [filteredStudents, setFilteredStudents] = useState([]);
+    const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+    const [loadingStudents, setLoadingStudents] = useState(true);
+    const [semesterFilter, setSemesterFilter] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [error, setError] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(50);
+    const [selectAll, setSelectAll] = useState(false);
+
+    useEffect(() => {
+      if (selectedSchedule && selectedSchedule.schedule_id) {
+        loadStudentsForSchedule();
+      } else {
+        setError('Invalid schedule selected. Please try again.');
+        setLoadingStudents(false);
+      }
+    }, [selectedSchedule]);
+
+    const loadStudentsForSchedule = async () => {
+      setLoadingStudents(true);
+      setError('');
+      try {
+        const scheduleId = selectedSchedule.schedule_id;
+        const response = await attendanceAPI.getScheduleStudents(scheduleId);
+        
+        if (response.data.status === 'success') {
+          setAvailableStudents(response.data.students || []);
+          const assigned = (response.data.students || [])
+            .filter(s => s.is_assigned)
+            .map(s => s.student_id);
+          setSelectedStudentIds(assigned);
+        } else {
+          setError(response.data.message || 'Failed to load students');
+        }
+      } catch (err) {
+        console.error('Failed to load students:', err);
+        setError('Connection error. Please try again.');
+      } finally {
+        setLoadingStudents(false);
+      }
+    };
+
+    // Filter and search students
+    useEffect(() => {
+      let filtered = availableStudents;
+      
+      // Semester filter
+      if (semesterFilter) {
+        filtered = filtered.filter(s => s.semester == semesterFilter);
+      }
+      
+      // Search filter
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        filtered = filtered.filter(s => 
+          s.name?.toLowerCase().includes(term) ||
+          s.nim?.toLowerCase().includes(term)
+        );
+      }
+      
+      setFilteredStudents(filtered);
+      setCurrentPage(1);
+    }, [availableStudents, semesterFilter, searchTerm]);
+
+    const handleToggleStudent = (studentId) => {
+      setSelectedStudentIds(prev =>
+        prev.includes(studentId) 
+          ? prev.filter(id => id !== studentId)
+          : [...prev, studentId]
+      );
+    };
+
+    const handleSelectAll = () => {
+      const currentPageIds = getCurrentPageStudents().map(s => s.student_id);
+      const allSelected = currentPageIds.every(id => selectedStudentIds.includes(id));
+      
+      if (allSelected) {
+        // Deselect all on current page
+        setSelectedStudentIds(prev => prev.filter(id => !currentPageIds.includes(id)));
+      } else {
+        // Select all on current page
+        setSelectedStudentIds(prev => [...new Set([...prev, ...currentPageIds])]);
+      }
+    };
+
+    // Get students for current page
+    const getCurrentPageStudents = () => {
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      const endIndex = startIndex + itemsPerPage;
+      return filteredStudents.slice(startIndex, endIndex);
+    };
+
+    // Calculate pagination info
+    const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+    const currentPageStudents = getCurrentPageStudents();
+    const allSelectedOnPage = currentPageStudents.every(s => selectedStudentIds.includes(s.student_id));
+
+    const handleSaveAssignments = async () => {
+      try {
+        await attendanceAPI.assignStudentsToSchedule(selectedSchedule.schedule_id, selectedStudentIds);
+        setShowStudentModal(false);
+        setSelectedSchedule(null);
+        loadData();
+        alert(`Students assigned successfully! ${selectedStudentIds.length} students assigned.`);
+      } catch (err) {
+        console.error('Failed to assign students:', err);
+        alert('Error assigning students. Please try again.');
+      }
+    };
+
+    const getAssignedCount = () => {
+      return availableStudents.filter(s => selectedStudentIds.includes(s.student_id)).length;
+    };
+
+    const getUnassignedCount = () => {
+      return availableStudents.filter(s => !selectedStudentIds.includes(s.student_id)).length;
+    };
+
+    if (loadingStudents) {
+      return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6">
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-4 text-slate-500">Loading students...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6">
+            <div className="text-center py-8">
+              <div className="text-red-500 text-4xl mb-4">⚠️</div>
+              <p className="text-slate-700">{error}</p>
+              <button
+                onClick={() => {
+                  setShowStudentModal(false);
+                  setSelectedSchedule(null);
+                }}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="text-xl font-bold text-slate-800">
+                {selectedSchedule?.class_code} - {selectedSchedule?.class_name}
+              </h3>
+              <p className="text-sm text-slate-500">
+                {selectedSchedule?.day_of_week} {selectedSchedule?.start_time} - {selectedSchedule?.end_time}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowStudentModal(false);
+                setSelectedSchedule(null);
+              }}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Stats Bar */}
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="bg-blue-50 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-blue-600">{availableStudents.length}</div>
+              <div className="text-xs text-blue-500">Total Students</div>
+            </div>
+            <div className="bg-green-50 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-green-600">{getAssignedCount()}</div>
+              <div className="text-xs text-green-500">Assigned</div>
+            </div>
+            <div className="bg-red-50 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-red-600">{getUnassignedCount()}</div>
+              <div className="text-xs text-red-500">Unassigned</div>
+            </div>
+          </div>
+
+          {/* Search & Filters */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <div className="flex-1 min-w-[200px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name or NIM..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="w-40">
+              <select
+                value={semesterFilter}
+                onChange={(e) => setSemesterFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Semesters</option>
+                {semesterOptions.map(sem => (
+                  <option key={sem} value={sem}>Semester {sem}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-500">Show:</label>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                className="border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+                <option value={500}>500</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Student Table */}
+          <div className="flex-1 overflow-y-auto border rounded-lg">
+            <table className="w-full">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-12">
+                    <input
+                      type="checkbox"
+                      checked={allSelectedOnPage && currentPageStudents.length > 0}
+                      onChange={handleSelectAll}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      disabled={currentPageStudents.length === 0}
+                    />
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">NIM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Name</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Semester</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Fingerprint</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {currentPageStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-4 py-8 text-center text-gray-400">
+                      {availableStudents.length === 0 
+                        ? 'No students found in system' 
+                        : 'No students match the filters'}
+                    </td>
+                  </tr>
+                ) : (
+                  currentPageStudents.map((student) => (
+                    <tr key={student.student_id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedStudentIds.includes(student.student_id)}
+                          onChange={() => handleToggleStudent(student.student_id)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-sm font-mono">{student.nim}</td>
+                      <td className="px-4 py-2 text-sm">{student.name}</td>
+                      <td className="px-4 py-2 text-sm">{student.semester ? `Semester ${student.semester}` : '-'}</td>
+                      <td className="px-4 py-2 text-sm">
+                        {student.fingerprint_id ? (
+                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">Slot {student.fingerprint_id}</span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">Not enrolled</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-sm">
+                        {selectedStudentIds.includes(student.student_id) ? (
+                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">Assigned</span>
+                        ) : (
+                          <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-xs">Unassigned</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <span className="text-sm text-slate-500">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredStudents.length)} of {filteredStudents.length} students
+              </span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="px-3 py-1 text-sm">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="border-t border-gray-200 pt-3 mt-3 flex justify-between items-center">
+            <div className="text-sm text-slate-500">
+              {selectedStudentIds.length} students selected
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowStudentModal(false);
+                  setSelectedSchedule(null);
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAssignments}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <UserPlus className="w-4 h-4" />
+                Save Assignments ({selectedStudentIds.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -223,7 +639,7 @@ function Schedules() {
       <div className="flex justify-between items-start flex-wrap gap-4 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Schedule Management</h1>
-          <p className="text-slate-500">Manage class schedules with calendar view</p>
+          <p className="text-slate-500">Manage class schedules and student assignments</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -259,7 +675,8 @@ function Schedules() {
                 day_of_week: 'Monday',
                 start_time: '08:00',
                 end_time: '10:00',
-                device_id: 'ESP32_01'
+                device_id: 'ESP32_01',
+                semester: ''
               });
               setShowForm(!showForm);
             }}
@@ -271,10 +688,22 @@ function Schedules() {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search schedules by class code, name, or lecturer..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
       {/* Filters */}
       {showFilters && (
         <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Class</label>
               <select
@@ -318,10 +747,23 @@ function Schedules() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>
+              <select
+                value={filters.semester}
+                onChange={(e) => setFilters({...filters, semester: e.target.value})}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Semesters</option>
+                {semesterOptions.map(sem => (
+                  <option key={sem} value={sem}>Semester {sem}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="flex justify-end mt-3">
             <button
-              onClick={() => setFilters({ class_id: '', day_of_week: '', room_id: '' })}
+              onClick={() => setFilters({ class_id: '', day_of_week: '', room_id: '', semester: '' })}
               className="text-sm text-blue-600 hover:text-blue-800"
             >
               Clear Filters
@@ -365,7 +807,7 @@ function Schedules() {
                   <option value="">Select Class</option>
                   {classes.map(cls => (
                     <option key={cls.class_id} value={cls.class_id}>
-                      {cls.class_code} - {cls.class_name}
+                      {cls.class_code} - {cls.class_name} {cls.lecturer_name ? `(${cls.lecturer_name})` : ''}
                     </option>
                   ))}
                 </select>
@@ -421,6 +863,19 @@ function Schedules() {
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>
+                <select
+                  value={formData.semester}
+                  onChange={(e) => setFormData({...formData, semester: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Semesters</option>
+                  {semesterOptions.map(sem => (
+                    <option key={sem} value={sem}>Semester {sem}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Device ID</label>
                 <input
                   type="text"
@@ -444,15 +899,14 @@ function Schedules() {
         </div>
       )}
 
+      {/* Student Assignment Modal */}
+      <StudentAssignmentModal />
+
       {/* CALENDAR VIEW */}
       {viewMode === 'week' ? (
         <div className="bg-white rounded-xl border overflow-hidden">
-          {/* Week Navigation */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <button
-              onClick={() => navigateWeek(-1)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
+            <button onClick={() => navigateWeek(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
               <ChevronLeft className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-4">
@@ -460,25 +914,17 @@ function Schedules() {
                 {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMM d')} - 
                 {format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMM d, yyyy')}
               </span>
-              <button
-                onClick={() => setSelectedDate(new Date())}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
+              <button onClick={() => setSelectedDate(new Date())} className="text-sm text-blue-600 hover:text-blue-800">
                 Today
               </button>
             </div>
-            <button
-              onClick={() => navigateWeek(1)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
+            <button onClick={() => navigateWeek(1)} className="p-2 hover:bg-gray-100 rounded-lg">
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Calendar Grid */}
           <div className="grid grid-cols-7 divide-x divide-gray-200">
             {getWeekDays().map((date, idx) => {
-              const dayName = format(date, 'EEEE');
               const daySchedules = getSchedulesForDay(date);
               const isToday = isSameDay(date, new Date());
 
@@ -494,34 +940,24 @@ function Schedules() {
                     {daySchedules.length === 0 ? (
                       <div className="text-xs text-gray-400 text-center py-4">No classes</div>
                     ) : (
-                      daySchedules.map((schedule, sIdx) => {
-                        const classInfo = getClassInfo(schedule.class_id);
-                        const roomInfo = getRoomInfo(schedule.room_id);
-                        return (
-                          <div
-                            key={sIdx}
-                            className={`p-2 rounded-lg border text-xs cursor-pointer hover:shadow-md transition-shadow ${
-                              getStatusBadge(schedule.start_time, schedule.end_time, schedule.day_of_week).props.children.includes('Active') 
-                                ? 'bg-green-50 border-green-200' 
-                                : 'bg-white border-gray-200'
-                            }`}
-                            onClick={() => handleEdit(schedule)}
-                          >
-                            <div className="font-medium text-gray-800">
-                              {classInfo ? classInfo.class_name : 'Unknown'}
-                            </div>
-                            <div className="text-gray-500">
-                              {schedule.start_time} - {schedule.end_time}
-                            </div>
-                            {roomInfo && (
-                              <div className="text-gray-400 text-[10px] flex items-center gap-1">
-                                <Building className="w-3 h-3" />
-                                {roomInfo.room_code}
-                              </div>
-                            )}
+                      daySchedules.map((schedule, sIdx) => (
+                        <div
+                          key={sIdx}
+                          className={`p-2 rounded-lg border text-xs cursor-pointer hover:shadow-md transition-shadow ${
+                            getStatusBadge(schedule.start_time, schedule.end_time, schedule.day_of_week).props.children.includes('Active') 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-white border-gray-200'
+                          }`}
+                          onClick={() => handleEdit(schedule)}
+                        >
+                          <div className="font-medium text-gray-800">{schedule.class_code}</div>
+                          <div className="text-gray-500">{schedule.start_time} - {schedule.end_time}</div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-gray-400 text-[10px]">{schedule.room_code || 'No room'}</span>
+                            <span className="text-blue-500 text-[10px]">{schedule.student_count || 0} students</span>
                           </div>
-                        );
-                      })
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>
@@ -536,13 +972,13 @@ function Schedules() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">#</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Class</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Day</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Time</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Room</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Lecturer</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Students</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Device</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
                 </tr>
               </thead>
@@ -550,55 +986,62 @@ function Schedules() {
                 {filteredSchedules.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
-                      <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <CalendarIcon className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                       No schedules found
                     </td>
                   </tr>
                 ) : (
-                  filteredSchedules.map((schedule, idx) => {
-                    const classInfo = getClassInfo(schedule.class_id);
-                    const roomInfo = getRoomInfo(schedule.room_id);
-                    return (
-                      <tr key={schedule.schedule_id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 text-sm text-gray-500">{idx + 1}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <div className="font-medium">{classInfo?.class_name || 'Unknown'}</div>
-                          <div className="text-xs text-gray-500">{classInfo?.class_code || ''}</div>
-                        </td>
-                        <td className="px-4 py-3 text-sm">{schedule.day_of_week}</td>
-                        <td className="px-4 py-3 text-sm">
-                          {schedule.start_time} - {schedule.end_time}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {roomInfo ? `${roomInfo.room_code} - ${roomInfo.room_name}` : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {getStatusBadge(schedule.start_time, schedule.end_time, schedule.day_of_week)}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-mono text-xs">
-                          {schedule.device_id || 'ESP32_01'}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => handleEdit(schedule)}
-                              className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(schedule.schedule_id)}
-                              className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
+                  filteredSchedules.map((schedule) => (
+                    <tr key={schedule.schedule_id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-sm">
+                        <div className="font-medium">{schedule.class_code}</div>
+                        <div className="text-xs text-gray-500">{schedule.class_name}</div>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{schedule.day_of_week}</td>
+                      <td className="px-4 py-3 text-sm font-mono">
+                        {schedule.start_time} - {schedule.end_time}
+                      </td>
+                      <td className="px-4 py-3 text-sm">{schedule.room_code || '-'}</td>
+                      <td className="px-4 py-3 text-sm">{schedule.lecturer_name || '-'}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <button
+                          onClick={() => handleManageStudents(schedule)}
+                          className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                        >
+                          <Users className="w-4 h-4" />
+                          {schedule.student_count || 0}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        {getStatusBadge(schedule.start_time, schedule.end_time, schedule.day_of_week)}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleEdit(schedule)}
+                            className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
+                            title="Edit"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleManageStudents(schedule)}
+                            className="text-green-600 hover:text-green-800 p-1 hover:bg-green-50 rounded"
+                            title="Manage Students"
+                          >
+                            <Users className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(schedule.schedule_id)}
+                            className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -607,7 +1050,7 @@ function Schedules() {
       )}
 
       {/* Stats Footer */}
-      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white p-3 rounded-lg border text-center">
           <div className="text-2xl font-bold text-blue-600">{schedules.length}</div>
           <div className="text-xs text-gray-500">Total Schedules</div>
@@ -630,6 +1073,12 @@ function Schedules() {
         <div className="bg-white p-3 rounded-lg border text-center">
           <div className="text-2xl font-bold text-orange-600">{rooms.length}</div>
           <div className="text-xs text-gray-500">Rooms</div>
+        </div>
+        <div className="bg-white p-3 rounded-lg border text-center">
+          <div className="text-2xl font-bold text-teal-600">
+            {schedules.reduce((acc, s) => acc + (s.student_count || 0), 0)}
+          </div>
+          <div className="text-xs text-gray-500">Total Assignments</div>
         </div>
       </div>
     </div>
