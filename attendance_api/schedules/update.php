@@ -42,7 +42,8 @@ if (mysqli_num_rows($checkResult) > 0) {
     echo json_encode(["status" => "error", "message" => "Schedule overlaps with existing schedule for this class"]);
     exit;
 }
-
+$grace_period = $data['grace_period'] ?? 15;
+$grace_period_value = $grace_period ? "'$grace_period'" : "15";
 $room_value = $room_id ? "'$room_id'" : "NULL";
 $semester_value = $semester ? "'$semester'" : "NULL";
 
@@ -54,6 +55,7 @@ $query = "UPDATE class_schedules SET
           end_time = '$end_time',
           device_id = '$device_id',
           semester = $semester_value
+            grace_period = $grace_period_value
           WHERE schedule_id = '$schedule_id'";
 
 if (mysqli_query($conn, $query)) {

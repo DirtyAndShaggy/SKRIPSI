@@ -24,6 +24,7 @@ SELECT
     cs.end_time,
     cs.device_id,
     cs.semester,
+    cs.grace_period,
     c.class_code,
     c.class_name,
     c.lecturer_id,

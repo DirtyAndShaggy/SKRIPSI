@@ -36,11 +36,13 @@ if (mysqli_num_rows($checkResult) > 0) {
     exit;
 }
 
+$grace_period = $data['grace_period'] ?? 15;
+$grace_period_value = $grace_period ? "'$grace_period'" : "15";
 $room_value = $room_id ? "'$room_id'" : "NULL";
 $semester_value = $semester ? "'$semester'" : "NULL";
 
-$query = "INSERT INTO class_schedules (class_id, room_id, day_of_week, start_time, end_time, device_id, semester) 
-          VALUES ('$class_id', $room_value, '$day_of_week', '$start_time', '$end_time', '$device_id', $semester_value)";
+$query = "INSERT INTO class_schedules (class_id, room_id, day_of_week, start_time, end_time, device_id, semester, grace_period) 
+          VALUES ('$class_id', $room_value, '$day_of_week', '$start_time', '$end_time', '$device_id', $semester_value, $grace_period_value)";
 
 if (mysqli_query($conn, $query)) {
     $schedule_id = mysqli_insert_id($conn);

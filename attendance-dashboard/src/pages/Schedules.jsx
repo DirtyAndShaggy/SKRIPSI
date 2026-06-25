@@ -42,7 +42,8 @@ function Schedules() {
     start_time: '08:00',
     end_time: '10:00',
     device_id: 'ESP32_01',
-    semester: ''
+    semester: '',
+    grace_period: 15
   });
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -204,7 +205,8 @@ const validateTimes = (start, end) => {
       start_time: schedule.start_time,
       end_time: schedule.end_time,
       device_id: schedule.device_id || 'ESP32_01',
-      semester: schedule.semester || ''
+      semester: schedule.semester || '',
+      grace_period: schedule.grace_period || 15
     });
     setShowForm(true);
   };
@@ -982,6 +984,25 @@ const validateTimes = (start, end) => {
                 </select>
               </div>
 
+              {/*grace period */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Grace Period (minutes)</label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    value={formData.grace_period}
+                    onChange={(e) => setFormData({...formData, grace_period: parseInt(e.target.value) || 0})}
+                    className="w-24 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-slate-500">minutes</span>
+                  <span className="text-xs text-slate-400">
+                    (Students arriving after this time will be marked as Late)
+                  </span>
+                </div>
+              </div>
+
               {/* Device ID */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Device ID</label>
@@ -1094,8 +1115,11 @@ const validateTimes = (start, end) => {
                               <span className="text-gray-400 text-[10px]">{schedule.student_count || 0} students</span>
                             </div>
                           </div>
-                          <div className="text-gray-500 text-[10px]">
+                          <div className="text-gray-500 text-[10px] flex items-center gap-1">
                             {schedule.start_time} - {schedule.end_time}
+                            <span className="text-yellow-500 text-[8px] bg-yellow-50 px-1 rounded">
+                              {schedule.grace_period || 15}m
+                            </span>
                           </div>
                           <div className="flex items-center justify-between mt-1">
                             <span className="text-gray-400 text-[10px]">{schedule.room_code || 'No room'}</span>
@@ -1154,6 +1178,7 @@ const validateTimes = (start, end) => {
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Class</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Day</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Time</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Grace</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Room</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Lecturer</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Students</th>
@@ -1164,11 +1189,12 @@ const validateTimes = (start, end) => {
               <tbody className="divide-y divide-gray-200">
                 {filteredSchedules.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
                       <CalendarIcon className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                       No schedules found
                     </td>
                   </tr>
+                  
                 ) : (
                   filteredSchedules.map((schedule) => (
                     <tr key={schedule.schedule_id} className="hover:bg-gray-50 transition-colors">
@@ -1179,6 +1205,11 @@ const validateTimes = (start, end) => {
                       <td className="px-4 py-3 text-sm">{schedule.day_of_week}</td>
                       <td className="px-4 py-3 text-sm font-mono">
                         {schedule.start_time} - {schedule.end_time}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded text-xs whitespace-nowrap">
+                          ⏰ {schedule.grace_period || 15} min
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-sm">{schedule.room_code || '-'}</td>
                       <td className="px-4 py-3 text-sm">{schedule.lecturer_name || '-'}</td>
