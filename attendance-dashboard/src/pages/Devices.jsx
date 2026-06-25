@@ -132,12 +132,19 @@ function Devices() {
     setLoading(true);
     try {
       const response = await attendanceAPI.getDevices();
+      console.log('Devices API response:', response.data); // Debug log
+      
       if (response.data.status === 'success') {
+        // Set devices from API
         setDevices(response.data.devices);
-        // Check if device is online
+        
+        // Check if device is online - ALWAYS from API response
         const device = response.data.devices.find(d => d.device_id === 'ESP32_01');
         if (device) {
-          setDeviceOnline(device.status === 'online');
+          const isOnline = device.status === 'online';
+          console.log(`Device ${device.device_id} status: ${device.status}, online: ${isOnline}`);
+          console.log(`Last seen: ${device.last_seen}, seconds ago: ${device.seconds_ago}`);
+          setDeviceOnline(isOnline);
         }
       }
       setLastUpdated(new Date());

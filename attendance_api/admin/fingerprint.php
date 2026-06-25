@@ -38,6 +38,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_commands') {
     exit;
 }
 
+// ─── GET: HEARTBEAT (ESP32 sends this periodically) ───
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'heartbeat') {
+    $device_id = $_GET['device_id'] ?? 'ESP32_01';
+    
+    // Update last_seen timestamp - ONLY update timestamp, keep status as is
+    $update = "UPDATE devices SET last_seen = NOW() WHERE device_id = '$device_id'";
+    mysqli_query($conn, $update);
+    
+    // No need to log heartbeat every time, but log once in a while
+    // Optionally log if last_seen was more than 5 minutes ago
+    $lastSeenQuery = "SELECT last_seen FROM devices WHERE device_id = '$device_id'";
+    $lastSeenResult = mysqli_query($conn, $lastSeenQuery);
+    $lastSeenRow = mysqli_fetch_assoc($lastSeenResult);
+    
+    if ($lastSeenRow && strtotime($lastSeenRow['last_seen']) < strtotime('-5 minutes')) {
+        $log = "INSERT INTO attendance_logs (device_id, event_type, message) 
+                VALUES ('$device_id', 'heartbeat', 'Device reconnected')";
+        mysqli_query($conn, $log);
+    }
+    
+    echo json_encode(["status" => "success", "message" => "Heartbeat received"]);
+    exit;
+}
+
 // ─── POST: QUEUE A NEW COMMAND (Dashboard calls this) ───
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'queue') {
     $data = json_decode(file_get_contents("php://input"), true);
