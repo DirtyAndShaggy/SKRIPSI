@@ -54,6 +54,46 @@ export const attendanceAPI = {
   deleteClass: (id) => api.post('/classes/delete.php', { class_id: id }),
   updateClassStatus: (classId, status) => api.post('/classes/update_status.php', { class_id: classId, is_active: status }),
 
+ // Groups
+  getGroups: () => api.get('/groups/list.php'),
+  getCohorts: () => api.get('/groups/cohorts.php?action=list'),
+  addCohort: (data) => api.post('/groups/cohorts.php?action=add', data),
+  deleteCohort: (cohortId) => api.post('/groups/cohorts.php?action=delete', { cohort_id: cohortId }),
+  addGroup: (data) => api.post('/groups/add_group.php', data),
+  deleteGroup: (groupId) => api.post('/groups/delete_group.php', { group_id: groupId }),
+
+  // ─── COHORT CRUD ───
+  getCohorts: () => api.get('/groups/cohorts.php?action=list'),
+  addCohort: (data) => api.post('/groups/cohorts.php?action=add', data),
+  updateCohort: (cohortId, data) => api.post('/groups/cohorts.php?action=update', { cohort_id: cohortId, ...data }),
+  deleteCohort: (cohortId) => api.post('/groups/cohorts.php?action=delete', { cohort_id: cohortId }),
+  updateCohortStatus: (cohortId, status) => api.post('/groups/cohorts.php?action=update_status', { cohort_id: cohortId, is_active: status }),
+
+  // ─── GROUP CRUD ───
+  addGroup: (data) => api.post('/groups/add_group.php', data),
+  updateGroup: (groupId, data) => api.post('/groups/update_group.php', { group_id: groupId, ...data }),
+  deleteGroup: (groupId) => api.post('/groups/delete_group.php', { group_id: groupId }),
+  updateGroupStatus: (groupId, status) => api.post('/groups/update_group_status.php', { group_id: groupId, is_active: status }),
+
+  // Get Lecturer Groups
+  getLecturerGroups: () => {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.user_id) {
+    return api.get(`/groups/by_lecturer.php?user_id=${user.user_id}`);
+  }
+  return Promise.reject('No user logged in');
+  },
+
+  // Get Lecturer Classes
+  getLecturerClasses: () => {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.user_id) {
+    return api.get(`/lecturers/my_classes.php?user_id=${user.user_id}`);
+  }
+  return Promise.reject('No user logged in');
+  },
+
+
   // Schedules
   getAllSchedules: () => api.get('/schedules/list.php'),
   getSchedules: (classId) => api.get(`/schedules/list.php?class_id=${classId}`),

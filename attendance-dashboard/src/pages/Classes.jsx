@@ -22,6 +22,17 @@ function Classes() {
   const [expandedClass, setExpandedClass] = useState(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [selectedClassForStudents, setSelectedClassForStudents] = useState(null);
+
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [selectedClassForGroup, setSelectedClassForGroup] = useState(null);
+  const [groupFormData, setGroupFormData] = useState({
+    group_name: '',
+    group_code: '',
+    lecturer_id: '',
+    capacity: '',
+    semester: '',
+    academic_year: ''
+  });
   
   const [formData, setFormData] = useState({
     class_code: '',
@@ -78,6 +89,31 @@ function Classes() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const handleAddGroup = async (e) => {
+    e.preventDefault();
+    try {
+      const data = {
+        class_id: selectedClassForGroup.class_id,
+        ...groupFormData
+      };
+      await attendanceAPI.addGroup(data);
+      alert('Group added successfully!');
+      setShowGroupModal(false);
+      setGroupFormData({
+        group_name: '',
+        group_code: '',
+        lecturer_id: '',
+        capacity: '',
+        semester: '',
+        academic_year: ''
+      });
+      loadData();
+    } catch (err) {
+      console.error('Failed to add group', err);
+      alert('Error adding group');
     }
   };
 
@@ -468,13 +504,49 @@ function Classes() {
                       {cls.class_type || 'Lecture'}
                     </span>
                   </div>
+                  
+                  {/* ─── CLASS INFO + GROUPS ─── */}
                   <div className="flex flex-wrap gap-4 mt-1 text-sm text-slate-500">
                     <span>👨‍🏫 {cls.lecturer_name || 'No lecturer assigned'}</span>
                     <span>🏠 {cls.rooms?.length > 0 ? cls.rooms.map(r => r.room_code).join(', ') : 'No rooms'}</span>
                     <span>👥 {cls.student_count || 0} students</span>
                     {cls.semester_offered && <span>🎓 Semester {cls.semester_offered}</span>}
+                    
+                    {/* ─── GROUPS DISPLAY ─── */}
+                    {cls.groups && cls.groups.length > 0 && (
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs font-medium text-purple-600">📋 Groups:</span>
+                        {cls.groups.map((group, idx) => (
+                          <span key={idx} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs">
+                            {group.group_code || group.group_name}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                    
+                    {/* ─── ADD GROUP BUTTON ─── */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedClassForGroup(cls);
+                        setGroupFormData({
+                          group_name: '',
+                          group_code: '',
+                          lecturer_id: cls.lecturer_id || '',
+                          capacity: '',
+                          semester: '',
+                          academic_year: ''
+                        });
+                        setShowGroupModal(true);
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      + Add Group
+                    </button>
                   </div>
                 </div>
+                
+                {/* ─── ACTION BUTTONS ─── */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={(e) => {
@@ -558,6 +630,142 @@ function Classes() {
           ))
         )}
       </div>
+
+      {/* Grop Modal */}
+      {showGroupModal && selectedClassForGroup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-slate-800">
+                Add Group to {selectedClassForGroup.class_code} - {selectedClassForGroup.class_name}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowGroupModal(false);
+                  setSelectedClassForGroup(null);
+                  setGroupFormData({
+                    group_name: '',
+                    group_code: '',
+                    lecturer_id: '',
+                    capacity: '',
+                    semester: '',
+                    academic_year: ''
+                  });
+                }}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddGroup} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Group Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Class A"
+                  value={groupFormData.group_name}
+                  onChange={(e) => setGroupFormData({...groupFormData, group_name: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Group Code</label>
+                <input
+                  type="text"
+                  placeholder="e.g., IF301-A"
+                  value={groupFormData.group_code}
+                  onChange={(e) => setGroupFormData({...groupFormData, group_code: e.target.value.toUpperCase()})}
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Lecturer</label>
+                <select
+                  value={groupFormData.lecturer_id}
+                  onChange={(e) => setGroupFormData({...groupFormData, lecturer_id: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Lecturer</option>
+                  {lecturers.map(lec => (
+                    <option key={lec.lecturer_id} value={lec.lecturer_id}>
+                      {lec.lecturer_code} - {lec.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Capacity</label>
+                <input
+                  type="number"
+                  placeholder="Max students"
+                  value={groupFormData.capacity}
+                  onChange={(e) => setGroupFormData({...groupFormData, capacity: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>
+                  <select
+                    value={groupFormData.semester}
+                    onChange={(e) => setGroupFormData({...groupFormData, semester: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select</option>
+                    {semesterOptions.map(sem => (
+                      <option key={sem} value={sem}>Semester {sem}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Academic Year</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., 2025/2026"
+                    value={groupFormData.academic_year}
+                    onChange={(e) => setGroupFormData({...groupFormData, academic_year: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Add Group
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGroupModal(false);
+                    setSelectedClassForGroup(null);
+                    setGroupFormData({
+                      group_name: '',
+                      group_code: '',
+                      lecturer_id: '',
+                      capacity: '',
+                      semester: '',
+                      academic_year: ''
+                    });
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Student Modal */}
       {showStudentModal && selectedClassForStudents && (

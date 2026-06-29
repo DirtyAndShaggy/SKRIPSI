@@ -12,7 +12,8 @@ import {
   LogOut,
   Fingerprint,
   Building,
-  User
+  User,
+  Layers  // ← ADD THIS
 } from 'lucide-react';
 
 function Sidebar() {
@@ -24,6 +25,7 @@ function Sidebar() {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', show: true },
     { path: '/students', icon: Users, label: 'Students', show: true },
     { path: '/classes', icon: BookOpen, label: 'Classes', show: true },
+    { path: '/groups', icon: Layers, label: 'Groups', show: isAdmin },
     { path: '/schedules', icon: Calendar, label: 'Schedules', show: isAdmin },
     { path: '/attendance', icon: CheckSquare, label: "Today's Attendance", show: true },
     { path: '/reports', icon: FileText, label: 'Reports', show: true },
@@ -35,7 +37,7 @@ function Sidebar() {
 
   return (
     <div className="h-screen w-64 bg-slate-900 text-white flex flex-col fixed left-0 top-0">
-      {/* Logo belum ada */}
+      {/* Logo */}
       <div className="p-4 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <Fingerprint className="w-8 h-8 text-blue-400" />

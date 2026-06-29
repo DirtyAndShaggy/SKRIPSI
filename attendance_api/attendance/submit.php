@@ -130,12 +130,47 @@ $class_name = $schedule['class_name'];
 $schedule_start = $schedule['start_time'];
 
 /* -----------------------------
-   3. Check if Student is ASSIGNED to this Schedule (NEW!)
+   3. Check if Student is ASSIGNED in the right GROUP for this Schedule
 ----------------------------- */
+$groupCheckQuery = "
+SELECT sc.id 
+FROM student_classes sc
+JOIN class_schedules cs ON sc.group_id = cs.group_id
+WHERE sc.student_id = '$student_id'
+AND cs.schedule_id = '$schedule_id'
+AND sc.is_active = 1
+";
+
+$groupCheckResult = mysqli_query($conn, $groupCheckQuery);
+
+if (!$groupCheckResult || mysqli_num_rows($groupCheckResult) === 0) {
+    writeLog(
+        $conn,
+        $device_id,
+        $fingerprint_id,
+        $student_id,
+        'wrong_group',
+        "Student not assigned to the group for this schedule"
+    );
+    
+    echo json_encode([
+        "status" => "rejected",
+        "message" => "Student not enrolled in this class group"
+    ]);
+    exit;
+}
+
 $assignmentQuery = "
 SELECT id FROM schedule_students 
 WHERE schedule_id = '$schedule_id' 
 AND student_id = '$student_id'
+";
+
+$enrollmentQuery = "
+SELECT id FROM student_classes 
+WHERE student_id = '$student_id' 
+AND class_id = '$class_id'
+AND is_active = 1
 ";
 
 $assignmentResult = mysqli_query($conn, $assignmentQuery);

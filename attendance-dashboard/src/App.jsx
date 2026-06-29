@@ -13,6 +13,7 @@ import Users from './pages/Users';
 import Devices from './pages/Devices';
 import Rooms from './pages/Rooms';
 import Lecturers from './pages/Lecturers';
+import Groups from './pages/Groups';
 
 const ProtectedRoute = ({ children, allowedRole }) => {
   const { user } = useUser();
@@ -113,6 +114,13 @@ function App() {
           <ProtectedRoute allowedRole="admin">
             <Layout user={user}>
               <Lecturers />
+            </Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/groups" element={
+          <ProtectedRoute allowedRole="admin">
+            <Layout user={user}>
+              <Groups />
             </Layout>
           </ProtectedRoute>
         } />

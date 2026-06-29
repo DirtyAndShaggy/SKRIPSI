@@ -7,7 +7,6 @@ SELECT
     c.*,
     l.full_name as lecturer_name,
     l.lecturer_code as lecturer_code,
-    l.lecturer_id as lecturer_id,
     (SELECT COUNT(*) FROM student_classes sc WHERE sc.class_id = c.class_id AND sc.is_active = 1) as student_count
 FROM classes c
 LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
@@ -28,6 +27,31 @@ while ($row = mysqli_fetch_assoc($result)) {
         $rooms[] = $room;
     }
     $row['rooms'] = $rooms;
+    
+    // ─── GET GROUPS FOR THIS CLASS ───
+    $groupQuery = "
+    SELECT 
+        cg.group_id,
+        cg.group_name,
+        cg.group_code,
+        cg.lecturer_id,
+        cg.capacity,
+        cg.semester,
+        cg.academic_year,
+        cg.is_active,
+        l.full_name as lecturer_name,
+        (SELECT COUNT(*) FROM student_classes sc WHERE sc.group_id = cg.group_id AND sc.is_active = 1) as student_count
+    FROM class_groups cg
+    LEFT JOIN lecturers l ON cg.lecturer_id = l.lecturer_id
+    WHERE cg.class_id = '{$row['class_id']}' AND cg.is_active = 1
+    ORDER BY cg.group_name
+    ";
+    $groupResult = mysqli_query($conn, $groupQuery);
+    $groups = [];
+    while ($group = mysqli_fetch_assoc($groupResult)) {
+        $groups[] = $group;
+    }
+    $row['groups'] = $groups;
     
     // Get students for this class
     $studentQuery = "
