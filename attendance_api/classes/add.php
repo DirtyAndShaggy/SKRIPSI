@@ -35,6 +35,15 @@ $query = "INSERT INTO classes (class_code, class_name, lecturer_id, class_type, 
 if (mysqli_query($conn, $query)) {
     $class_id = mysqli_insert_id($conn);
     
+    //group_id support
+    if (!empty($data['group_ids']) && is_array($data['group_ids'])) {
+        foreach ($data['group_ids'] as $group_id) {
+            $gcQuery = "INSERT INTO group_classes (group_id, class_id, semester) 
+                        VALUES ('$group_id', '$class_id', " . ($data['semester_offered'] ? "'{$data['semester_offered']}'" : "NULL") . ")";
+            mysqli_query($conn, $gcQuery);
+        }
+    }
+
     // Add room assignments
     if (!empty($room_ids) && is_array($room_ids)) {
         foreach ($room_ids as $room_id) {

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Plus, Edit2, Trash2, X, RefreshCw, 
   Users, Search, ChevronDown, 
-  ChevronUp, BookOpen
+  ChevronUp, BookOpen, Layers,
+  Power, PowerOff, CheckCircle, XCircle
 } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
@@ -11,6 +12,8 @@ function Classes() {
   const [rooms, setRooms] = useState([]);
   const [lecturers, setLecturers] = useState([]);
   const [students, setStudents] = useState([]);
+  const [cohorts, setCohorts] = useState([]);
+  const [allGroups, setAllGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -19,20 +22,16 @@ function Classes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('');
   const [expandedClass, setExpandedClass] = useState(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [selectedClassForStudents, setSelectedClassForStudents] = useState(null);
-
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [selectedClassForGroup, setSelectedClassForGroup] = useState(null);
-  const [groupFormData, setGroupFormData] = useState({
-    group_name: '',
-    group_code: '',
-    lecturer_id: '',
-    capacity: '',
-    semester: '',
-    academic_year: ''
-  });
+  const [showAssignGroupsModal, setShowAssignGroupsModal] = useState(false);
+  const [selectedClassForGroups, setSelectedClassForGroups] = useState(null);
+  const [availableGroups, setAvailableGroups] = useState([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState([]);
+  const [assignSemester, setAssignSemester] = useState('');
+  const [loadingGroups, setLoadingGroups] = useState(false);
   
   const [formData, setFormData] = useState({
     class_code: '',
@@ -40,8 +39,10 @@ function Classes() {
     lecturer_id: '',
     class_type: 'Lecture',
     semester_offered: '',
+    cohort_id: '',
     is_active: 1,
-    room_ids: []
+    room_ids: [],
+    group_ids: []
   });
 
   const classTypes = ['Lecture', 'Lab', 'Tutorial', 'Seminar'];
@@ -58,28 +59,35 @@ function Classes() {
     else setRefreshing(true);
     
     try {
-      // Load classes
       const classesResponse = await attendanceAPI.getClasses();
       if (classesResponse.data.status === 'success') {
         setClasses(classesResponse.data.classes);
       }
 
-      // Load rooms
       const roomsResponse = await attendanceAPI.getRooms();
       if (roomsResponse.data.status === 'success') {
         setRooms(roomsResponse.data.rooms);
       }
 
-      // Load lecturers
       const lecturersResponse = await attendanceAPI.getLecturers();
       if (lecturersResponse.data.status === 'success') {
         setLecturers(lecturersResponse.data.lecturers);
       }
 
-      // Load students
       const studentsResponse = await attendanceAPI.getStudents();
       if (studentsResponse.data.status === 'success') {
         setStudents(studentsResponse.data.students);
+      }
+
+      // Load all groups for the filter and form
+      const groupsResponse = await attendanceAPI.getGroups();
+      if (groupsResponse.data.status === 'success') {
+        const cohortsData = groupsResponse.data.cohorts || [];
+        setCohorts(cohortsData);
+        const flattened = cohortsData.flatMap(c =>
+          (c.groups || []).map(g => ({ ...g, cohort_id: String(c.cohort_id) }))
+        );
+        setAllGroups(flattened);
       }
       
       setLastUpdated(new Date());
@@ -89,31 +97,6 @@ function Classes() {
     } finally {
       setLoading(false);
       setRefreshing(false);
-    }
-  };
-
-  const handleAddGroup = async (e) => {
-    e.preventDefault();
-    try {
-      const data = {
-        class_id: selectedClassForGroup.class_id,
-        ...groupFormData
-      };
-      await attendanceAPI.addGroup(data);
-      alert('Group added successfully!');
-      setShowGroupModal(false);
-      setGroupFormData({
-        group_name: '',
-        group_code: '',
-        lecturer_id: '',
-        capacity: '',
-        semester: '',
-        academic_year: ''
-      });
-      loadData();
-    } catch (err) {
-      console.error('Failed to add group', err);
-      alert('Error adding group');
     }
   };
 
@@ -130,7 +113,8 @@ function Classes() {
         class_type: formData.class_type,
         semester_offered: formData.semester_offered || null,
         is_active: formData.is_active,
-        room_ids: formData.room_ids || []
+        room_ids: formData.room_ids || [],
+        group_ids: formData.group_ids || []
       };
       
       if (editingClass) {
@@ -147,8 +131,10 @@ function Classes() {
         lecturer_id: '',
         class_type: 'Lecture',
         semester_offered: '',
+        cohort_id: '',
         is_active: 1,
-        room_ids: []
+        room_ids: [],
+        group_ids: []
       });
       setShowForm(false);
       setEditingClass(null);
@@ -161,14 +147,26 @@ function Classes() {
 
   const handleEdit = (cls) => {
     setEditingClass(cls);
+    const assignedGroupIds = cls.assigned_groups?.map(g => String(g.group_id)) || [];
+    let assignedCohortId = cls.assigned_groups?.[0]?.cohort_id ? String(cls.assigned_groups[0].cohort_id) : '';
+
+    if (!assignedCohortId && assignedGroupIds.length > 0) {
+      const matchedGroup = allGroups.find(g => assignedGroupIds.includes(String(g.group_id)));
+      if (matchedGroup?.cohort_id) {
+        assignedCohortId = String(matchedGroup.cohort_id);
+      }
+    }
+
     setFormData({
       class_code: cls.class_code,
       class_name: cls.class_name,
       lecturer_id: cls.lecturer_id || '',
       class_type: cls.class_type || 'Lecture',
       semester_offered: cls.semester_offered || '',
-      is_active: cls.is_active !== undefined ? cls.is_active : 1,
-      room_ids: cls.rooms?.map(r => r.room_id) || []
+      cohort_id: assignedCohortId,
+      is_active: cls.is_active != null ? Number(cls.is_active) : 1,
+      room_ids: cls.rooms?.map(r => String(r.room_id)) || [],
+      group_ids: assignedGroupIds
     });
     setShowForm(true);
   };
@@ -208,12 +206,25 @@ function Classes() {
   };
 
   const handleRoomToggle = (roomId) => {
+    const id = String(roomId);
     setFormData(prev => {
       const currentRooms = prev.room_ids || [];
-      if (currentRooms.includes(roomId)) {
-        return { ...prev, room_ids: currentRooms.filter(id => id !== roomId) };
+      if (currentRooms.includes(id)) {
+        return { ...prev, room_ids: currentRooms.filter(rid => rid !== id) };
       } else {
-        return { ...prev, room_ids: [...currentRooms, roomId] };
+        return { ...prev, room_ids: [...currentRooms, id] };
+      }
+    });
+  };
+
+  const handleGroupToggle = (groupId) => {
+    const id = String(groupId);
+    setFormData(prev => {
+      const currentGroups = prev.group_ids || [];
+      if (currentGroups.includes(id)) {
+        return { ...prev, group_ids: currentGroups.filter(gid => gid !== id) };
+      } else {
+        return { ...prev, group_ids: [...currentGroups, id] };
       }
     });
   };
@@ -231,8 +242,10 @@ function Classes() {
       lecturer_id: '',
       class_type: 'Lecture',
       semester_offered: '',
+      cohort_id: '',
       is_active: 1,
-      room_ids: []
+      room_ids: [],
+      group_ids: []
     });
   };
 
@@ -243,19 +256,34 @@ function Classes() {
       cls.class_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       cls.lecturer_name?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const semesterMatch = !semesterFilter || cls.students?.some(s => s.semester == semesterFilter);
-    
+    const semesterMatch = !semesterFilter ||
+      String(cls.semester_offered) === String(semesterFilter) ||
+      cls.students?.some(s => String(s.semester) === String(semesterFilter)) ||
+      cls.assigned_groups?.some(g => String(g.semester) === String(semesterFilter));
+
     const statusMatch = statusFilter === 'all' || 
-      (statusFilter === 'active' && cls.is_active == 1) ||
-      (statusFilter === 'inactive' && cls.is_active == 0);
+      (statusFilter === 'active' && Number(cls.is_active) === 1) ||
+      (statusFilter === 'inactive' && Number(cls.is_active) === 0);
+
+    let groupMatch = true;
+    if (groupFilter) {
+      groupMatch = cls.assigned_groups?.some(g => String(g.group_id) === String(groupFilter)) || false;
+    }
     
-    return searchMatch && semesterMatch && statusMatch;
+    return searchMatch && semesterMatch && statusMatch && groupMatch;
   });
 
   const getStudentsForClass = (classId) => {
     const cls = classes.find(c => c.class_id === classId);
     return cls?.students || [];
   };
+
+  const filterGroups = allGroups.filter(g => g.is_active);
+
+  // Get available groups for the form dropdown
+  const availableGroupsForForm = filterGroups.filter(g =>
+    !formData.cohort_id || String(g.cohort_id) === String(formData.cohort_id)
+  );
 
   if (loading) {
     return (
@@ -293,8 +321,10 @@ function Classes() {
                 lecturer_id: '',
                 class_type: 'Lecture',
                 semester_offered: '',
+                cohort_id: '',
                 is_active: 1,
-                room_ids: []
+                room_ids: [],
+                group_ids: []
               });
               setShowForm(!showForm);
             }}
@@ -319,7 +349,7 @@ function Classes() {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
             <input
@@ -353,12 +383,27 @@ function Classes() {
               <option value="inactive">Inactive</option>
             </select>
           </div>
+          <div>
+            <select
+              value={groupFilter}
+              onChange={(e) => setGroupFilter(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Groups</option>
+              {filterGroups.map(group => (
+                <option key={group.group_id} value={group.group_id}>
+                  {group.group_code || group.group_name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => {
                 setSearchTerm('');
                 setSemesterFilter('');
                 setStatusFilter('all');
+                setGroupFilter('');
               }}
               className="w-full border rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-50"
             >
@@ -370,7 +415,7 @@ function Classes() {
 
       {/* Add/Edit Class Form */}
       {showForm && (
-        <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200">
+        <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200 max-h-[80vh] overflow-y-auto">
           <h3 className="font-medium text-slate-700 mb-3">
             {editingClass ? 'Edit Class' : 'Add New Class'}
           </h3>
@@ -422,19 +467,43 @@ function Classes() {
                 <option key={sem} value={sem}>Semester {sem}</option>
               ))}
             </select>
+            <select
+              value={formData.cohort_id}
+              onChange={(e) => setFormData({...formData, cohort_id: e.target.value, group_ids: []})}
+              className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select Cohort Year</option>
+              {cohorts.map(cohort => (
+                <option key={cohort.cohort_id} value={cohort.cohort_id}>
+                  {cohort.cohort_name} ({cohort.cohort_code})
+                </option>
+              ))}
+            </select>
+            
+            {/* Toggle Switch for Active/Inactive */}
             <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.is_active === 1}
-                  onChange={(e) => setFormData({...formData, is_active: e.target.checked ? 1 : 0})}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                />
+              <label className="flex items-center gap-3 cursor-pointer">
+                <span className="text-sm text-slate-700">Inactive</span>
+                <div
+                  onClick={() => setFormData({...formData, is_active: Number(formData.is_active) === 1 ? 0 : 1})}
+                  className={`relative w-12 h-6 rounded-full transition-colors cursor-pointer ${
+                    Number(formData.is_active) === 1 ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                      Number(formData.is_active) === 1 ? 'translate-x-6' : ''
+                    }`}
+                  />
+                </div>
                 <span className="text-sm text-slate-700">Active</span>
               </label>
+              <span className={`text-xs font-medium ${formData.is_active === 1 ? 'text-green-600' : 'text-red-600'}`}>
+                {formData.is_active === 1 ? '🟢 Active' : '🔴 Inactive'}
+              </span>
             </div>
-            
-            {/* Room Selection */}
+
+            {/* Room Selection - Scrollable */}
             <div className="md:col-span-3">
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Rooms (select all that apply)
@@ -442,20 +511,53 @@ function Classes() {
               {rooms.length === 0 ? (
                 <p className="text-sm text-slate-400">No rooms available. Please add rooms first in Room Management.</p>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-white p-3 rounded-lg border border-gray-200">
-                  {rooms.map((room) => (
-                    <label key={room.room_id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded">
-                      <input
-                        type="checkbox"
-                        checked={(formData.room_ids || []).includes(room.room_id)}
-                        onChange={() => handleRoomToggle(room.room_id)}
-                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                      />
-                      <span className="text-slate-700">
-                        {room.room_code} - {room.room_name}
-                      </span>
-                    </label>
-                  ))}
+                <div className="bg-white p-3 rounded-lg border border-gray-200 max-h-40 overflow-y-auto">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {rooms.map((room) => (
+                      <label key={room.room_id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={(formData.room_ids || []).includes(room.room_id)}
+                          onChange={() => handleRoomToggle(room.room_id)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-slate-700">
+                          {room.room_code} - {room.room_name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Group Selection - Scrollable */}
+            <div className="md:col-span-3">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                <Layers className="w-4 h-4 inline mr-1" />
+                Groups (select groups that take this class)
+              </label>
+              {!formData.cohort_id ? (
+                <p className="text-sm text-slate-500">Select a cohort year first to load group options.</p>
+              ) : availableGroupsForForm.length === 0 ? (
+                <p className="text-sm text-slate-400">No groups available for the selected cohort.</p>
+              ) : (
+                <div className="bg-white p-3 rounded-lg border border-gray-200 max-h-40 overflow-y-auto">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {availableGroupsForForm.map((group) => (
+                      <label key={group.group_id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={(formData.group_ids || []).includes(String(group.group_id))}
+                          onChange={() => handleGroupToggle(group.group_id)}
+                          className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                        />
+                        <span className="text-slate-700">
+                          {group.group_code || group.group_name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -489,6 +591,7 @@ function Classes() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-sm font-bold text-blue-600">{cls.class_code}</span>
                     <span className="text-lg font-semibold text-slate-800">{cls.class_name}</span>
+                    {/* Toggle Status Badge */}
                     {cls.is_active == 1 ? (
                       <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
@@ -512,37 +615,19 @@ function Classes() {
                     <span>👥 {cls.student_count || 0} students</span>
                     {cls.semester_offered && <span>🎓 Semester {cls.semester_offered}</span>}
                     
-                    {/* ─── GROUPS DISPLAY ─── */}
-                    {cls.groups && cls.groups.length > 0 && (
+                    {/* ─── ASSIGNED GROUPS DISPLAY ─── */}
+                    {cls.assigned_groups && cls.assigned_groups.length > 0 ? (
                       <span className="flex items-center gap-1">
                         <span className="text-xs font-medium text-purple-600">📋 Groups:</span>
-                        {cls.groups.map((group, idx) => (
+                        {cls.assigned_groups.map((group, idx) => (
                           <span key={idx} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs">
                             {group.group_code || group.group_name}
                           </span>
                         ))}
                       </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">No groups assigned</span>
                     )}
-                    
-                    {/* ─── ADD GROUP BUTTON ─── */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedClassForGroup(cls);
-                        setGroupFormData({
-                          group_name: '',
-                          group_code: '',
-                          lecturer_id: cls.lecturer_id || '',
-                          capacity: '',
-                          semester: '',
-                          academic_year: ''
-                        });
-                        setShowGroupModal(true);
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      + Add Group
-                    </button>
                   </div>
                 </div>
                 
@@ -568,6 +653,7 @@ function Classes() {
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
+                  {/* Toggle Status Button */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -581,9 +667,9 @@ function Classes() {
                     title={cls.is_active == 1 ? 'Deactivate class' : 'Activate class'}
                   >
                     {cls.is_active == 1 ? (
-                      <span className="text-sm">🟢</span>
+                      <Power className="w-4 h-4" />
                     ) : (
-                      <span className="text-sm">🔴</span>
+                      <PowerOff className="w-4 h-4" />
                     )}
                   </button>
                   <button
@@ -630,142 +716,6 @@ function Classes() {
           ))
         )}
       </div>
-
-      {/* Grop Modal */}
-      {showGroupModal && selectedClassForGroup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-slate-800">
-                Add Group to {selectedClassForGroup.class_code} - {selectedClassForGroup.class_name}
-              </h3>
-              <button
-                onClick={() => {
-                  setShowGroupModal(false);
-                  setSelectedClassForGroup(null);
-                  setGroupFormData({
-                    group_name: '',
-                    group_code: '',
-                    lecturer_id: '',
-                    capacity: '',
-                    semester: '',
-                    academic_year: ''
-                  });
-                }}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddGroup} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Group Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g., Class A"
-                  value={groupFormData.group_name}
-                  onChange={(e) => setGroupFormData({...groupFormData, group_name: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Group Code</label>
-                <input
-                  type="text"
-                  placeholder="e.g., IF301-A"
-                  value={groupFormData.group_code}
-                  onChange={(e) => setGroupFormData({...groupFormData, group_code: e.target.value.toUpperCase()})}
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Lecturer</label>
-                <select
-                  value={groupFormData.lecturer_id}
-                  onChange={(e) => setGroupFormData({...groupFormData, lecturer_id: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Lecturer</option>
-                  {lecturers.map(lec => (
-                    <option key={lec.lecturer_id} value={lec.lecturer_id}>
-                      {lec.lecturer_code} - {lec.full_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Capacity</label>
-                <input
-                  type="number"
-                  placeholder="Max students"
-                  value={groupFormData.capacity}
-                  onChange={(e) => setGroupFormData({...groupFormData, capacity: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>
-                  <select
-                    value={groupFormData.semester}
-                    onChange={(e) => setGroupFormData({...groupFormData, semester: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select</option>
-                    {semesterOptions.map(sem => (
-                      <option key={sem} value={sem}>Semester {sem}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Academic Year</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., 2025/2026"
-                    value={groupFormData.academic_year}
-                    onChange={(e) => setGroupFormData({...groupFormData, academic_year: e.target.value})}
-                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  Add Group
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowGroupModal(false);
-                    setSelectedClassForGroup(null);
-                    setGroupFormData({
-                      group_name: '',
-                      group_code: '',
-                      lecturer_id: '',
-                      capacity: '',
-                      semester: '',
-                      academic_year: ''
-                    });
-                  }}
-                  className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Student Modal */}
       {showStudentModal && selectedClassForStudents && (
@@ -860,6 +810,7 @@ function Classes() {
         <span>👥 <strong>Students:</strong> Enrolled students (view only)</span>
         <span>🟢 <strong>Active:</strong> Class is available for scheduling</span>
         <span>🔴 <strong>Inactive:</strong> Class is archived</span>
+        <span>📋 <strong>Groups:</strong> Which student groups take this class</span>
       </div>
     </div>
   );

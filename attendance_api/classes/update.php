@@ -12,6 +12,7 @@ $class_type = $data['class_type'] ?? 'Lecture';
 $semester_offered = $data['semester_offered'] ?? null;
 $is_active = $data['is_active'] ?? 1;
 $room_ids = $data['room_ids'] ?? [];
+$group_ids = $data['group_ids'] ?? [];
 
 if (!$class_id) {
     echo json_encode(["status" => "error", "message" => "Class ID required"]);
@@ -38,6 +39,17 @@ if (mysqli_query($conn, $query)) {
         foreach ($room_ids as $room_id) {
             $roomQuery = "INSERT INTO class_rooms (class_id, room_id) VALUES ('$class_id', '$room_id')";
             mysqli_query($conn, $roomQuery);
+        }
+    }
+    
+    // ─── UPDATE GROUP ASSIGNMENTS ───
+    mysqli_query($conn, "DELETE FROM group_classes WHERE class_id = '$class_id'");
+    
+    if (!empty($group_ids) && is_array($group_ids)) {
+        foreach ($group_ids as $group_id) {
+            $gcQuery = "INSERT INTO group_classes (group_id, class_id, semester) 
+                        VALUES ('$group_id', '$class_id', $semester_value)";
+            mysqli_query($conn, $gcQuery);
         }
     }
     

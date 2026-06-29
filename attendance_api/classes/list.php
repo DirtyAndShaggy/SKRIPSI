@@ -28,30 +28,30 @@ while ($row = mysqli_fetch_assoc($result)) {
     }
     $row['rooms'] = $rooms;
     
-    // ─── GET GROUPS FOR THIS CLASS ───
+    // ─── GET GROUPS ASSIGNED TO THIS CLASS ───
     $groupQuery = "
     SELECT 
-        cg.group_id,
-        cg.group_name,
-        cg.group_code,
-        cg.lecturer_id,
-        cg.capacity,
-        cg.semester,
-        cg.academic_year,
-        cg.is_active,
-        l.full_name as lecturer_name,
-        (SELECT COUNT(*) FROM student_classes sc WHERE sc.group_id = cg.group_id AND sc.is_active = 1) as student_count
-    FROM class_groups cg
-    LEFT JOIN lecturers l ON cg.lecturer_id = l.lecturer_id
-    WHERE cg.class_id = '{$row['class_id']}' AND cg.is_active = 1
-    ORDER BY cg.group_name
+        g.group_id,
+        g.cohort_id,
+        g.group_name,
+        g.group_code,
+        g.semester,
+        g.academic_year,
+        cg.cohort_name,
+        cg.cohort_code,
+        (SELECT COUNT(*) FROM students s WHERE s.group_id = g.group_id) as student_count
+    FROM group_classes gc
+    JOIN `groups` g ON gc.group_id = g.group_id
+    JOIN cohorts cg ON g.cohort_id = cg.cohort_id
+    WHERE gc.class_id = '{$row['class_id']}' AND gc.is_active = 1
+    ORDER BY cg.cohort_name, g.group_name
     ";
     $groupResult = mysqli_query($conn, $groupQuery);
-    $groups = [];
+    $assignedGroups = [];
     while ($group = mysqli_fetch_assoc($groupResult)) {
-        $groups[] = $group;
+        $assignedGroups[] = $group;
     }
-    $row['groups'] = $groups;
+    $row['assigned_groups'] = $assignedGroups;
     
     // Get students for this class
     $studentQuery = "

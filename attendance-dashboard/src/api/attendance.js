@@ -69,6 +69,16 @@ export const attendanceAPI = {
   deleteCohort: (cohortId) => api.post('/groups/cohorts.php?action=delete', { cohort_id: cohortId }),
   updateCohortStatus: (cohortId, status) => api.post('/groups/cohorts.php?action=update_status', { cohort_id: cohortId, is_active: status }),
 
+  // ─── GROUP-CLASS ASSIGNMENT ───
+  getAvailableGroupsForClass: (classId) => 
+    api.get(`/groups/get_available.php?class_id=${classId}`),
+  assignGroupsToClass: (classId, groupIds, semester) => 
+    api.post('/groups/assign_class.php', { 
+      class_id: classId, 
+      group_ids: groupIds,
+      semester: semester 
+    }),
+
   // ─── GROUP CRUD ───
   addGroup: (data) => api.post('/groups/add_group.php', data),
   updateGroup: (groupId, data) => api.post('/groups/update_group.php', { group_id: groupId, ...data }),

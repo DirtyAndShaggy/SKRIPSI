@@ -4,12 +4,34 @@ include("../config/database.php");
 
 $action = $_GET['action'] ?? 'list';
 
-// LIST cohorts
+// LIST cohorts - WITH GROUPS
 if ($action === 'list') {
     $query = "SELECT * FROM cohorts ORDER BY start_year DESC";
     $result = mysqli_query($conn, $query);
     $cohorts = [];
     while ($row = mysqli_fetch_assoc($result)) {
+        // Get groups for this cohort
+        $groupQuery = "
+        SELECT 
+            g.group_id,
+            g.cohort_id,
+            g.group_name,
+            g.group_code,
+            g.semester,
+            g.academic_year,
+            g.capacity,
+            g.is_active,
+            (SELECT COUNT(*) FROM students s WHERE s.group_id = g.group_id) as student_count
+        FROM `groups` g
+        WHERE g.cohort_id = '{$row['cohort_id']}' AND g.is_active = 1
+        ORDER BY g.group_name
+        ";
+        $groupResult = mysqli_query($conn, $groupQuery);
+        $groups = [];
+        while ($group = mysqli_fetch_assoc($groupResult)) {
+            $groups[] = $group;
+        }
+        $row['groups'] = $groups;
         $cohorts[] = $row;
     }
     echo json_encode(["status" => "success", "cohorts" => $cohorts]);
@@ -41,7 +63,7 @@ if ($action === 'add') {
     exit;
 }
 
-// EDIT cohort
+// UPDATE cohort
 if ($action === 'update') {
     $data = json_decode(file_get_contents("php://input"), true);
     $cohort_id = $data['cohort_id'] ?? 0;
@@ -70,6 +92,7 @@ if ($action === 'update') {
     exit;
 }
 
+// UPDATE cohort status
 if ($action === 'update_status') {
     $data = json_decode(file_get_contents("php://input"), true);
     $cohort_id = $data['cohort_id'] ?? 0;

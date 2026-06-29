@@ -24,6 +24,7 @@ while ($row = mysqli_fetch_assoc($result)) {
     $groupQuery = "
     SELECT 
         g.group_id,
+        g.cohort_id,
         g.group_name,
         g.group_code,
         g.semester,
