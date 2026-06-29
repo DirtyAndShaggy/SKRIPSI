@@ -18,6 +18,7 @@ $query = "
 SELECT 
     cs.schedule_id,
     cs.class_id,
+    cs.group_id,
     cs.room_id,
     cs.day_of_week,
     cs.start_time,
@@ -32,11 +33,18 @@ SELECT
     r.room_code,
     r.room_name,
     r.building,
+    g.group_name,
+    g.group_code as group_code,
+    g.cohort_id,
+    co.cohort_name,
+    co.cohort_code as cohort_code,
     (SELECT COUNT(*) FROM schedule_students ss WHERE ss.schedule_id = cs.schedule_id) as student_count
 FROM class_schedules cs
 JOIN classes c ON cs.class_id = c.class_id
 LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
 LEFT JOIN rooms r ON cs.room_id = r.room_id
+LEFT JOIN `groups` g ON cs.group_id = g.group_id
+LEFT JOIN cohorts co ON g.cohort_id = co.cohort_id
 $whereClause
 ORDER BY FIELD(cs.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'), cs.start_time
 ";

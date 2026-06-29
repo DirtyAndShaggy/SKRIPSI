@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Fingerprint, Plus, Edit2, Trash2, X, Loader2, RefreshCw, 
-  GraduationCap, Layers, Users, Search
+  GraduationCap, Layers, Users, Search, Filter
 } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
@@ -16,8 +16,16 @@ function Students() {
   const [enrollingStudentId, setEnrollingStudentId] = useState(null);
   const [enrollmentStatus, setEnrollmentStatus] = useState({});
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  
+  // ─── FILTERS ───
+  const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [cohortFilter, setCohortFilter] = useState('');
+  const [groupFilter, setGroupFilter] = useState('');
+  const [semesterFilter, setSemesterFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [filteredGroups, setFilteredGroups] = useState([]);
+  
   const [formData, setFormData] = useState({
     nim: '',
     name: '',
@@ -47,19 +55,14 @@ function Students() {
     else setRefreshing(true);
     
     try {
-      // Load students
       const studentsResponse = await attendanceAPI.getStudents();
       if (studentsResponse.data.status === 'success') {
         setStudents(studentsResponse.data.students);
       }
 
-      // Load groups using the same approach as Classes page
       const groupsResponse = await attendanceAPI.getGroups();
       if (groupsResponse.data.status === 'success') {
-        // Set cohorts for the dropdown
         setCohorts(groupsResponse.data.cohorts);
-        
-        // Flatten groups from cohorts and preserve cohort_id as a string
         const flattened = groupsResponse.data.cohorts.flatMap(c =>
           (c.groups || []).map(g => ({ ...g, cohort_id: String(c.cohort_id) }))
         );
@@ -76,7 +79,7 @@ function Students() {
     }
   };
 
-  // Filter groups when cohort changes
+  // Filter groups when cohort changes in form
   useEffect(() => {
     if (formData.cohort_id) {
       const filtered = allGroups.filter(g => String(g.cohort_id) === String(formData.cohort_id));
@@ -87,6 +90,16 @@ function Students() {
   }, [formData.cohort_id, allGroups]);
 
   const handleRefresh = () => loadData(false);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setCohortFilter('');
+    setGroupFilter('');
+    setSemesterFilter('');
+    setStatusFilter('all');
+  };
+
+  const activeFilterCount = [searchTerm, cohortFilter, groupFilter, semesterFilter, statusFilter !== 'all'].filter(Boolean).length;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -222,15 +235,42 @@ function Students() {
     return null;
   };
 
-  // Filter students by search term
+  // ─── FILTER STUDENTS ───
   const filteredStudents = students.filter(student => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      student.nim?.toLowerCase().includes(term) ||
-      student.name?.toLowerCase().includes(term) ||
-      student.email?.toLowerCase().includes(term)
-    );
+    // Search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const matches = 
+        student.nim?.toLowerCase().includes(term) ||
+        student.name?.toLowerCase().includes(term) ||
+        student.email?.toLowerCase().includes(term);
+      if (!matches) return false;
+    }
+    
+    // Cohort filter
+    if (cohortFilter && student.cohort_id != cohortFilter) return false;
+    
+    // Group filter
+    if (groupFilter && student.group_id != groupFilter) return false;
+    
+    // Semester filter
+    if (semesterFilter && student.semester != semesterFilter) return false;
+    
+    // Status filter
+    if (statusFilter === 'active' && student.fingerprint_id) return true;
+    if (statusFilter === 'inactive' && !student.fingerprint_id) return true;
+    if (statusFilter === 'all') return true;
+    
+    return true;
+  });
+
+  // Get cohorts for filter dropdown
+  const filterCohorts = cohorts.map(c => ({ ...c, cohort_id: String(c.cohort_id) }));
+
+  // Get groups for filter dropdown
+  const filterGroups = allGroups.filter(g => {
+    if (!cohortFilter) return true;
+    return String(g.cohort_id) === String(cohortFilter);
   });
 
   if (loading) {
@@ -245,6 +285,21 @@ function Students() {
           <p className="text-sm text-slate-500">Manage students, assign cohorts, groups, and fingerprint IDs</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* ─── FILTER TOGGLE BUTTON ─── */}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+              showFilters ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -277,17 +332,134 @@ function Students() {
         <span>{filteredStudents.length} students</span>
       </div>
 
-      {/* Search Bar */}
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search by NIM, name, or email..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+      {/* ─── FILTERS SECTION ─── (Togglable) */}
+      {showFilters && (
+        <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by NIM, name, email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            
+            {/* Cohort Filter */}
+            <div>
+              <select
+                value={cohortFilter}
+                onChange={(e) => {
+                  setCohortFilter(e.target.value);
+                  setGroupFilter(''); // Reset group when cohort changes
+                }}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Cohorts</option>
+                {filterCohorts.map(cohort => (
+                  <option key={cohort.cohort_id} value={cohort.cohort_id}>
+                    {cohort.cohort_name} ({cohort.cohort_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Group Filter */}
+            <div>
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={!cohortFilter}
+              >
+                <option value="">All Groups</option>
+                {filterGroups.map(group => (
+                  <option key={group.group_id} value={group.group_id}>
+                    {group.group_name} ({group.group_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Semester Filter */}
+            <div>
+              <select
+                value={semesterFilter}
+                onChange={(e) => setSemesterFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Semesters</option>
+                {semesterOptions.map(sem => (
+                  <option key={sem} value={sem}>Semester {sem}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Has Fingerprint</option>
+                <option value="inactive">No Fingerprint</option>
+              </select>
+            </div>
+          </div>
+          
+          {/* Clear Filters */}
+          <div className="flex justify-end mt-3">
+            <button
+              onClick={clearFilters}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              Clear All Filters
+            </button>
+          </div>
+
+          {/* Active filters display */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+              <span className="text-xs text-gray-500">Active filters:</span>
+              {searchTerm && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Search: "{searchTerm}"
+                  <button onClick={() => setSearchTerm('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {cohortFilter && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Cohort: {cohorts.find(c => String(c.cohort_id) === cohortFilter)?.cohort_name || cohortFilter}
+                  <button onClick={() => { setCohortFilter(''); setGroupFilter(''); }} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {groupFilter && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Group: {allGroups.find(g => String(g.group_id) === groupFilter)?.group_name || groupFilter}
+                  <button onClick={() => setGroupFilter('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {semesterFilter && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Semester: {semesterFilter}
+                  <button onClick={() => setSemesterFilter('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {statusFilter !== 'all' && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Status: {statusFilter === 'active' ? 'Has Fingerprint' : 'No Fingerprint'}
+                  <button onClick={() => setStatusFilter('all')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add/Edit Student Form */}
       {showForm && (
@@ -505,6 +677,7 @@ function Students() {
         <span>🎓 <strong>Cohort:</strong> Student's academic year group (e.g., 2020/2021)</span>
         <span>📚 <strong>Group:</strong> Student's section within their cohort (e.g., A, B, C)</span>
         <span>📅 <strong>Semester:</strong> Current semester the student is in</span>
+        <span>🔽 <strong>Filters:</strong> Click the Filters button to show/hide filter options</span>
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ function Groups() {
   const [expandedCohort, setExpandedCohort] = useState(null);
   
   // ─── FILTERS ───
+  const [showFilters, setShowFilters] = useState(false); // ← ADD THIS
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [semesterFilter, setSemesterFilter] = useState('');
@@ -270,6 +271,21 @@ function Groups() {
           <p className="text-sm text-slate-500">Manage cohorts and student groups</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* ─── FILTER TOGGLE BUTTON ─── */}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+              showFilters ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {(searchTerm || statusFilter !== 'all' || semesterFilter) && (
+              <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {[searchTerm, statusFilter !== 'all', semesterFilter].filter(Boolean).length}
+              </span>
+            )}
+          </button>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -303,84 +319,86 @@ function Groups() {
         <span>{filteredCohorts.length} cohorts</span>
       </div>
 
-      {/* ─── FILTERS SECTION ─── */}
-      <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search cohorts..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      {/* ─── FILTERS SECTION ─── (Togglable) */}
+      {showFilters && (
+        <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search cohorts..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            
+            {/* Status Filter */}
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            
+            {/* Semester Filter */}
+            <div>
+              <select
+                value={semesterFilter}
+                onChange={(e) => setSemesterFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Semesters</option>
+                {semesterOptions.map(sem => (
+                  <option key={sem} value={sem}>Semester {sem}</option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Clear Filters */}
+            <div className="flex gap-2">
+              <button
+                onClick={clearFilters}
+                className="w-full border rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                Clear Filters
+              </button>
+            </div>
           </div>
           
-          {/* Status Filter */}
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-          
-          {/* Semester Filter */}
-          <div>
-            <select
-              value={semesterFilter}
-              onChange={(e) => setSemesterFilter(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Semesters</option>
-              {semesterOptions.map(sem => (
-                <option key={sem} value={sem}>Semester {sem}</option>
-              ))}
-            </select>
-          </div>
-          
-          {/* Clear Filters */}
-          <div className="flex gap-2">
-            <button
-              onClick={clearFilters}
-              className="w-full border rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 transition-colors"
-            >
-              Clear Filters
-            </button>
-          </div>
+          {/* Active filters display */}
+          {(searchTerm || statusFilter !== 'all' || semesterFilter) && (
+            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+              <span className="text-xs text-gray-500">Active filters:</span>
+              {searchTerm && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Search: "{searchTerm}"
+                  <button onClick={() => setSearchTerm('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {statusFilter !== 'all' && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Status: {statusFilter}
+                  <button onClick={() => setStatusFilter('all')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {semesterFilter && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Semester: {semesterFilter}
+                  <button onClick={() => setSemesterFilter('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        
-        {/* Active filters display */}
-        {(searchTerm || statusFilter !== 'all' || semesterFilter) && (
-          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
-            <span className="text-xs text-gray-500">Active filters:</span>
-            {searchTerm && (
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
-                Search: "{searchTerm}"
-                <button onClick={() => setSearchTerm('')} className="hover:text-blue-900">×</button>
-              </span>
-            )}
-            {statusFilter !== 'all' && (
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
-                Status: {statusFilter}
-                <button onClick={() => setStatusFilter('all')} className="hover:text-blue-900">×</button>
-              </span>
-            )}
-            {semesterFilter && (
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
-                Semester: {semesterFilter}
-                <button onClick={() => setSemesterFilter('')} className="hover:text-blue-900">×</button>
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* ─── COHORT MODAL (Add/Edit) ─── */}
       {showCohortModal && (

@@ -15,6 +15,8 @@ function Schedules() {
   const [rooms, setRooms] = useState([]);
   const [lecturers, setLecturers] = useState([]);
   const [students, setStudents] = useState([]);
+  const [cohorts, setCohorts] = useState([]);
+  const [allGroups, setAllGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -30,6 +32,8 @@ function Schedules() {
   const [isOvernight, setIsOvernight] = useState(false);
   const [filters, setFilters] = useState({
     class_id: '',
+    cohort_id: '',
+    group_id: '',
     day_of_week: '',
     room_id: '',
     semester: ''
@@ -37,6 +41,8 @@ function Schedules() {
   const [showFilters, setShowFilters] = useState(false);
   const [formData, setFormData] = useState({
     class_id: '',
+    cohort_id: '',
+    group_id: '',
     room_id: '',
     day_of_week: 'Monday',
     start_time: '08:00',
@@ -139,6 +145,16 @@ const validateTimes = (start, end) => {
         setStudents(studentsResponse.data.students);
       }
 
+      const cohortsResponse = await attendanceAPI.getGroups();
+      if (cohortsResponse.data.status === 'success') {
+        setCohorts(cohortsResponse.data.cohorts || []);
+        setAllGroups(cohortsResponse.data.cohorts.flatMap(cohort => cohort.groups || []).map(group => ({
+          ...group,
+          cohort_id: String(group.cohort_id),
+          group_id: String(group.group_id)
+        })));
+      }
+
       const schedulesResponse = await attendanceAPI.getAllSchedules();
       if (schedulesResponse.data.status === 'success') {
         setSchedules(schedulesResponse.data.schedules);
@@ -159,15 +175,24 @@ const validateTimes = (start, end) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    if (!formData.group_id) {
+      alert('Please select a group for the schedule.');
+      return;
+    }
+
     try {
+      const selectedClassCohortId = selectedClassGroups?.[0]?.cohort_id ? String(selectedClassGroups[0].cohort_id) : '';
       const data = {
         class_id: parseInt(formData.class_id),
+        cohort_id: selectedClassCohortId ? parseInt(selectedClassCohortId) : null,
+        group_id: formData.group_id ? parseInt(formData.group_id) : null,
         room_id: formData.room_id ? parseInt(formData.room_id) : null,
         day_of_week: formData.day_of_week,
         start_time: formData.start_time,
         end_time: formData.end_time,
         device_id: formData.device_id,
-        semester: formData.semester || null
+        semester: formData.semester || null,
+        grace_period: formData.grace_period || 15
       };
       
       if (editingSchedule) {
@@ -180,12 +205,15 @@ const validateTimes = (start, end) => {
       
       setFormData({
         class_id: '',
+        cohort_id: '',
+        group_id: '',
         room_id: '',
         day_of_week: 'Monday',
         start_time: '08:00',
         end_time: '10:00',
         device_id: 'ESP32_01',
-        semester: ''
+        semester: '',
+        grace_period: 15
       });
       setShowForm(false);
       setEditingSchedule(null);
@@ -200,6 +228,8 @@ const validateTimes = (start, end) => {
     setEditingSchedule(schedule);
     setFormData({
       class_id: schedule.class_id.toString(),
+      cohort_id: schedule.cohort_id ? String(schedule.cohort_id) : '',
+      group_id: schedule.group_id ? String(schedule.group_id) : '',
       room_id: schedule.room_id?.toString() || '',
       day_of_week: schedule.day_of_week,
       start_time: schedule.start_time,
@@ -255,12 +285,15 @@ const validateTimes = (start, end) => {
     setEditingSchedule(null);
     setFormData({
       class_id: '',
+      cohort_id: '',
+      group_id: '',
       room_id: '',
       day_of_week: 'Monday',
       start_time: '08:00',
       end_time: '10:00',
       device_id: 'ESP32_01',
-      semester: ''
+      semester: '',
+      grace_period: 15
     });
   };
 
@@ -277,6 +310,12 @@ const validateTimes = (start, end) => {
     
     if (filters.class_id) {
       filtered = filtered.filter(s => s.class_id === parseInt(filters.class_id));
+    }
+    if (filters.cohort_id) {
+      filtered = filtered.filter(s => String(s.cohort_id) === String(filters.cohort_id));
+    }
+    if (filters.group_id) {
+      filtered = filtered.filter(s => String(s.group_id) === String(filters.group_id));
     }
     if (filters.day_of_week) {
       filtered = filtered.filter(s => s.day_of_week === filters.day_of_week);
@@ -301,6 +340,10 @@ const validateTimes = (start, end) => {
     const dayName = format(date, 'EEEE');
     return getFilteredSchedules().filter(s => s.day_of_week === dayName);
   };
+
+  const selectedClass = classes.find(cls => String(cls.class_id) === String(formData.class_id));
+  const selectedClassGroups = selectedClass?.assigned_groups || [];
+  const selectedClassCohort = selectedClassGroups?.[0];
 
   const getStatusBadge = (startTime, endTime, dayOfWeek) => {
     const now = new Date();
@@ -734,12 +777,15 @@ const validateTimes = (start, end) => {
               setEditingSchedule(null);
               setFormData({
                 class_id: '',
+                cohort_id: '',
+                group_id: '',
                 room_id: '',
                 day_of_week: 'Monday',
                 start_time: '08:00',
                 end_time: '10:00',
                 device_id: 'ESP32_01',
-                semester: ''
+                semester: '',
+                grace_period: 15
               });
               setShowForm(!showForm);
             }}
@@ -783,6 +829,37 @@ const validateTimes = (start, end) => {
               </select>
             </div>
             <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Cohort</label>
+              <select
+                value={filters.cohort_id}
+                onChange={(e) => setFilters({...filters, cohort_id: e.target.value, group_id: ''})}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Cohorts</option>
+                {cohorts.map(cohort => (
+                  <option key={cohort.cohort_id} value={cohort.cohort_id}>
+                    {cohort.cohort_name} {cohort.cohort_code ? `(${cohort.cohort_code})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Group</label>
+              <select
+                value={filters.group_id}
+                onChange={(e) => setFilters({...filters, group_id: e.target.value})}
+                disabled={!filters.cohort_id}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              >
+                <option value="">All Groups</option>
+                {allGroups.filter(group => !filters.cohort_id || String(group.cohort_id) === String(filters.cohort_id)).map(group => (
+                  <option key={group.group_id} value={group.group_id}>
+                    {group.group_name} {group.group_code ? `(${group.group_code})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Day</label>
               <select
                 value={filters.day_of_week}
@@ -795,6 +872,8 @@ const validateTimes = (start, end) => {
                 ))}
               </select>
             </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Room</label>
               <select
@@ -823,14 +902,14 @@ const validateTimes = (start, end) => {
                 ))}
               </select>
             </div>
-          </div>
-          <div className="flex justify-end mt-3">
-            <button
-              onClick={() => setFilters({ class_id: '', day_of_week: '', room_id: '', semester: '' })}
-              className="text-sm text-blue-600 hover:text-blue-800"
-            >
-              Clear Filters
-            </button>
+            <div className="flex items-end">
+              <button
+                onClick={() => setFilters({ class_id: '', cohort_id: '', group_id: '', day_of_week: '', room_id: '', semester: '' })}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Clear Filters
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -865,7 +944,11 @@ const validateTimes = (start, end) => {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Class</label>
                 <select
                   value={formData.class_id}
-                  onChange={(e) => setFormData({...formData, class_id: e.target.value})}
+                  onChange={(e) => {
+                    const selected = classes.find(cls => String(cls.class_id) === e.target.value);
+                    const cohortId = selected?.assigned_groups?.[0]?.cohort_id ? String(selected.assigned_groups[0].cohort_id) : '';
+                    setFormData({...formData, class_id: e.target.value, cohort_id: cohortId, group_id: ''});
+                  }}
                   className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 >
@@ -873,6 +956,42 @@ const validateTimes = (start, end) => {
                   {classes.map(cls => (
                     <option key={cls.class_id} value={cls.class_id}>
                       {cls.class_code} - {cls.class_name} {cls.lecturer_name ? `(${cls.lecturer_name})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Cohort Info */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cohort</label>
+                {selectedClassCohort ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {selectedClassCohort.cohort_name}
+                    {selectedClassCohort.cohort_code ? ` (${selectedClassCohort.cohort_code})` : ''}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-700">
+                    Select a class with assigned groups to load cohort and groups.
+                  </div>
+                )}
+              </div>
+
+              {/* Group Selection */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Group</label>
+                <select
+                  value={formData.group_id}
+                  onChange={(e) => setFormData({ ...formData, group_id: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!selectedClassGroups.length}
+                  required
+                >
+                  <option value="">
+                    {selectedClassGroups.length ? 'Select Group' : 'Choose class with groups first'}
+                  </option>
+                  {selectedClassGroups.map(group => (
+                    <option key={group.group_id} value={group.group_id}>
+                      {group.group_name} {group.group_code ? `(${group.group_code})` : ''}
                     </option>
                   ))}
                 </select>
@@ -1115,6 +1234,16 @@ const validateTimes = (start, end) => {
                               <span className="text-gray-400 text-[10px]">{schedule.student_count || 0} students</span>
                             </div>
                           </div>
+                          <div className="text-gray-500 text-[10px] mb-1">
+                            {schedule.group_name ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-slate-600">
+                                Group: <strong>{schedule.group_code || schedule.group_name}</strong>
+                                {schedule.cohort_name ? `• ${schedule.cohort_name}` : ''}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">No group assigned</span>
+                            )}
+                          </div>
                           <div className="text-gray-500 text-[10px] flex items-center gap-1">
                             {schedule.start_time} - {schedule.end_time}
                             <span className="text-yellow-500 text-[8px] bg-yellow-50 px-1 rounded">
@@ -1182,6 +1311,7 @@ const validateTimes = (start, end) => {
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Room</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Lecturer</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Students</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Group</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
                 </tr>
@@ -1189,7 +1319,7 @@ const validateTimes = (start, end) => {
               <tbody className="divide-y divide-gray-200">
                 {filteredSchedules.length === 0 ? (
                   <tr>
-                    <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
                       <CalendarIcon className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                       No schedules found
                     </td>
@@ -1201,6 +1331,12 @@ const validateTimes = (start, end) => {
                       <td className="px-4 py-3 text-sm">
                         <div className="font-medium">{schedule.class_code}</div>
                         <div className="text-xs text-gray-500">{schedule.class_name}</div>
+                        {schedule.group_name && (
+                          <div className="text-[11px] text-slate-500 mt-1">
+                            <span className="font-medium">Group:</span> {schedule.group_code || schedule.group_name}
+                            {schedule.cohort_name ? ` • ${schedule.cohort_name}` : ''}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm">{schedule.day_of_week}</td>
                       <td className="px-4 py-3 text-sm font-mono">
@@ -1221,6 +1357,15 @@ const validateTimes = (start, end) => {
                           <Users className="w-4 h-4" />
                           {schedule.student_count || 0}
                         </button>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        {schedule.group_name ? (
+                          <span className="text-slate-700">
+                            {schedule.group_code || schedule.group_name}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">No group</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm">
                         {getStatusBadge(schedule.start_time, schedule.end_time, schedule.day_of_week)}

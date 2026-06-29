@@ -3,7 +3,8 @@ import {
   Plus, Edit2, Trash2, X, RefreshCw, 
   Users, Search, ChevronDown, 
   ChevronUp, BookOpen, Layers,
-  Power, PowerOff, CheckCircle, XCircle
+  Power, PowerOff, CheckCircle, XCircle,
+  Filter
 } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
@@ -19,6 +20,9 @@ function Classes() {
   const [showForm, setShowForm] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  
+  // ─── FILTERS ───
+  const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -26,12 +30,6 @@ function Classes() {
   const [expandedClass, setExpandedClass] = useState(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [selectedClassForStudents, setSelectedClassForStudents] = useState(null);
-  const [showAssignGroupsModal, setShowAssignGroupsModal] = useState(false);
-  const [selectedClassForGroups, setSelectedClassForGroups] = useState(null);
-  const [availableGroups, setAvailableGroups] = useState([]);
-  const [selectedGroupIds, setSelectedGroupIds] = useState([]);
-  const [assignSemester, setAssignSemester] = useState('');
-  const [loadingGroups, setLoadingGroups] = useState(false);
   
   const [formData, setFormData] = useState({
     class_code: '',
@@ -79,7 +77,6 @@ function Classes() {
         setStudents(studentsResponse.data.students);
       }
 
-      // Load all groups for the filter and form
       const groupsResponse = await attendanceAPI.getGroups();
       if (groupsResponse.data.status === 'success') {
         const cohortsData = groupsResponse.data.cohorts || [];
@@ -101,6 +98,15 @@ function Classes() {
   };
 
   const handleRefresh = () => loadData(false);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSemesterFilter('');
+    setStatusFilter('all');
+    setGroupFilter('');
+  };
+
+  const activeFilterCount = [searchTerm, semesterFilter, statusFilter !== 'all', groupFilter].filter(Boolean).length;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -249,7 +255,6 @@ function Classes() {
     });
   };
 
-  // Filter classes
   const filteredClasses = classes.filter(cls => {
     const searchMatch = 
       cls.class_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -280,7 +285,6 @@ function Classes() {
 
   const filterGroups = allGroups.filter(g => g.is_active);
 
-  // Get available groups for the form dropdown
   const availableGroupsForForm = filterGroups.filter(g =>
     !formData.cohort_id || String(g.cohort_id) === String(formData.cohort_id)
   );
@@ -304,6 +308,21 @@ function Classes() {
           <p className="text-sm text-slate-500">Manage academic classes (subjects) before scheduling</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* ─── FILTER TOGGLE BUTTON ─── */}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+              showFilters ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -347,71 +366,99 @@ function Classes() {
         <span>{filteredClasses.length} classes</span>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by code, name, lecturer..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      {/* ─── FILTERS SECTION ─── (Togglable) */}
+      {showFilters && (
+        <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by code, name, lecturer..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <select
+                value={semesterFilter}
+                onChange={(e) => setSemesterFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Semesters</option>
+                {semesterOptions.map(sem => (
+                  <option key={sem} value={sem}>Semester {sem}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <div>
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Groups</option>
+                {filterGroups.map(group => (
+                  <option key={group.group_id} value={group.group_id}>
+                    {group.group_code || group.group_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={clearFilters}
+                className="w-full border rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-50"
+              >
+                Clear Filters
+              </button>
+            </div>
           </div>
-          <div>
-            <select
-              value={semesterFilter}
-              onChange={(e) => setSemesterFilter(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Semesters</option>
-              {semesterOptions.map(sem => (
-                <option key={sem} value={sem}>Semester {sem}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-          <div>
-            <select
-              value={groupFilter}
-              onChange={(e) => setGroupFilter(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Groups</option>
-              {filterGroups.map(group => (
-                <option key={group.group_id} value={group.group_id}>
-                  {group.group_code || group.group_name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setSemesterFilter('');
-                setStatusFilter('all');
-                setGroupFilter('');
-              }}
-              className="w-full border rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-50"
-            >
-              Clear Filters
-            </button>
-          </div>
+          
+          {/* Active filters display */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+              <span className="text-xs text-gray-500">Active filters:</span>
+              {searchTerm && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Search: "{searchTerm}"
+                  <button onClick={() => setSearchTerm('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {semesterFilter && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Semester: {semesterFilter}
+                  <button onClick={() => setSemesterFilter('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {statusFilter !== 'all' && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Status: {statusFilter}
+                  <button onClick={() => setStatusFilter('all')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {groupFilter && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Group: {filterGroups.find(g => g.group_id == groupFilter)?.group_code || groupFilter}
+                  <button onClick={() => setGroupFilter('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Add/Edit Class Form */}
       {showForm && (
@@ -420,6 +467,7 @@ function Classes() {
             {editingClass ? 'Edit Class' : 'Add New Class'}
           </h3>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* ... rest of form (same as before) ... */}
             <input
               type="text"
               placeholder="Class Code (e.g., IF301)"
@@ -503,7 +551,7 @@ function Classes() {
               </span>
             </div>
 
-            {/* Room Selection - Scrollable */}
+            {/* Room Selection */}
             <div className="md:col-span-3">
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Rooms (select all that apply)
@@ -531,7 +579,7 @@ function Classes() {
               )}
             </div>
 
-            {/* Group Selection - Scrollable */}
+            {/* Group Selection */}
             <div className="md:col-span-3">
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 <Layers className="w-4 h-4 inline mr-1" />
@@ -591,7 +639,6 @@ function Classes() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-sm font-bold text-blue-600">{cls.class_code}</span>
                     <span className="text-lg font-semibold text-slate-800">{cls.class_name}</span>
-                    {/* Toggle Status Badge */}
                     {cls.is_active == 1 ? (
                       <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
@@ -608,14 +655,12 @@ function Classes() {
                     </span>
                   </div>
                   
-                  {/* ─── CLASS INFO + GROUPS ─── */}
                   <div className="flex flex-wrap gap-4 mt-1 text-sm text-slate-500">
                     <span>👨‍🏫 {cls.lecturer_name || 'No lecturer assigned'}</span>
                     <span>🏠 {cls.rooms?.length > 0 ? cls.rooms.map(r => r.room_code).join(', ') : 'No rooms'}</span>
                     <span>👥 {cls.student_count || 0} students</span>
                     {cls.semester_offered && <span>🎓 Semester {cls.semester_offered}</span>}
                     
-                    {/* ─── ASSIGNED GROUPS DISPLAY ─── */}
                     {cls.assigned_groups && cls.assigned_groups.length > 0 ? (
                       <span className="flex items-center gap-1">
                         <span className="text-xs font-medium text-purple-600">📋 Groups:</span>
@@ -631,7 +676,6 @@ function Classes() {
                   </div>
                 </div>
                 
-                {/* ─── ACTION BUTTONS ─── */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={(e) => {
@@ -653,7 +697,6 @@ function Classes() {
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
-                  {/* Toggle Status Button */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -666,11 +709,7 @@ function Classes() {
                     }`}
                     title={cls.is_active == 1 ? 'Deactivate class' : 'Activate class'}
                   >
-                    {cls.is_active == 1 ? (
-                      <Power className="w-4 h-4" />
-                    ) : (
-                      <PowerOff className="w-4 h-4" />
-                    )}
+                    {cls.is_active == 1 ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
                   </button>
                   <button
                     onClick={(e) => {
@@ -811,6 +850,7 @@ function Classes() {
         <span>🟢 <strong>Active:</strong> Class is available for scheduling</span>
         <span>🔴 <strong>Inactive:</strong> Class is archived</span>
         <span>📋 <strong>Groups:</strong> Which student groups take this class</span>
+        <span>🔽 <strong>Filters:</strong> Click the Filters button to show/hide filter options</span>
       </div>
     </div>
   );
