@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import attendanceAPI from '../api/attendance';
+import { getLocalDateString } from '../utils/date';
 
 function TodayAttendance() {
   const [user, setUser] = useState(null);
@@ -15,6 +16,7 @@ function TodayAttendance() {
   // ─── DATA STATES ───
   const [classes, setClasses] = useState([]);
   const [schedules, setSchedules] = useState([]);
+  const [allSchedules, setAllSchedules] = useState([]);
   const [groups, setGroups] = useState([]);
   const [cohorts, setCohorts] = useState([]);
   const [attendanceData, setAttendanceData] = useState(null);
@@ -22,14 +24,6 @@ function TodayAttendance() {
   const [attendanceLogs, setAttendanceLogs] = useState([]);
   
   // ─── FILTER STATES ───
-  const getLocalDateString = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   const [selectedClass, setSelectedClass] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -76,7 +70,11 @@ function TodayAttendance() {
     });
   };
 
-  const adminAttendance = filterAdminAttendance();
+  const rawAdminAttendance = filterAdminAttendance();
+  const isTodaySelected = selectedDate === getLocalDateString();
+  const hasActualTodayAttendance = allAttendance.some(record => record.timestamp);
+  const adminAttendance = isTodaySelected && !hasActualTodayAttendance ? [] : rawAdminAttendance;
+  const noActualAttendanceToday = selectedDate === getLocalDateString() && attendanceData?.students?.length > 0 && attendanceData.students.every(s => !s.timestamp);
 
   const getAdminSummary = () => {
     const total = adminAttendance.length;
@@ -161,6 +159,7 @@ function TodayAttendance() {
       if (schedulesResponse.data.status === 'success') {
         const availableSchedules = schedulesResponse.data.schedules;
         setSchedules(availableSchedules);
+        setAllSchedules(availableSchedules);
       }
 
       await loadAllAttendance(selectedDate);
@@ -194,9 +193,10 @@ function TodayAttendance() {
   };
 
   const loadAllAttendance = async (date) => {
+    const normalizedDate = date || getLocalDateString();
     setLoading(true);
     try {
-      const response = await attendanceAPI.getAttendanceByDate(date);
+      const response = await attendanceAPI.getAttendanceByDate(normalizedDate);
       if (response.data.status === 'success') {
         setAllAttendance(response.data.records || []);
         setAttendanceData(null);
@@ -243,7 +243,7 @@ function TodayAttendance() {
     else setRefreshing(true);
     
     try {
-      const response = await attendanceAPI.getAttendanceBySchedule(targetScheduleId, selectedDate);
+      const response = await attendanceAPI.getAttendanceBySchedule(targetScheduleId, selectedDate || getLocalDateString());
       if (response.data.status === 'success') {
         setAttendanceData(response.data);
         setLastUpdated(new Date());
@@ -261,13 +261,16 @@ function TodayAttendance() {
   };
 
   const handleClassChange = async (classId) => {
-    const cls = classes.find(c => c.class_id === classId) || null;
+    const normalizedClassId = classId == null ? null : String(classId);
+    const cls = classes.find(c => String(c.class_id) === normalizedClassId) || null;
     setSelectedClass(cls);
     setError('');
     if (role === 'lecturer') {
       await loadSchedulesForClass(classId);
     } else {
-      const filtered = schedules.filter(s => s.class_id === classId);
+      const filtered = normalizedClassId
+        ? allSchedules.filter(s => String(s.class_id) === normalizedClassId)
+        : allSchedules;
       setSchedules(filtered);
       setSelectedScheduleId(null);
     }
@@ -288,8 +291,29 @@ function TodayAttendance() {
     }
   };
 
+  const handleClearFilters = async () => {
+    const today = getLocalDateString();
+    setSelectedDate(today);
+    setSelectedClass(null);
+    setSelectedScheduleId(null);
+    setSelectedGroup(null);
+    setSelectedSemester('');
+    setSearchTerm('');
+    setError('');
+
+    if (role === 'admin') {
+      setSchedules(allSchedules);
+      await loadAllAttendance(today);
+    } else if (schedules.length > 0) {
+      const preferredSchedule = pickBestScheduleForDate(schedules, today);
+      const scheduleToLoad = preferredSchedule?.schedule_id || schedules[0].schedule_id;
+      setSelectedScheduleId(scheduleToLoad);
+      await loadAttendance(true, scheduleToLoad);
+    }
+  };
+
   const handleDateChange = async (e) => {
-    const newDate = e.target.value;
+    const newDate = e.target.value || getLocalDateString();
     setSelectedDate(newDate);
     if (role === 'admin') {
       await loadAllAttendance(newDate);
@@ -309,7 +333,7 @@ function TodayAttendance() {
   };
 
   const getSummaryStats = () => {
-    if (!attendanceData) return null;
+    if (!attendanceData || noActualAttendanceToday) return null;
     const total = attendanceData.summary?.total_students || 0;
     const present = attendanceData.summary?.present || 0;
     const late = attendanceData.summary?.late || 0;
@@ -404,6 +428,12 @@ function TodayAttendance() {
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
+          <button
+            onClick={handleClearFilters}
+            className="bg-white border border-slate-200 text-slate-700 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
+          >
+            Clear Filters
+          </button>
           <span className="text-xs text-slate-400">
             Last updated: {lastUpdated.toLocaleTimeString()}
           </span>
@@ -419,7 +449,7 @@ function TodayAttendance() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Class</label>
               <select
                 value={selectedClass?.class_id || ''}
-                onChange={(e) => handleClassChange(Number(e.target.value))}
+                onChange={(e) => handleClassChange(e.target.value ? Number(e.target.value) : null)}
                 className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Classes</option>
@@ -453,7 +483,7 @@ function TodayAttendance() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
               <input
                 type="date"
-                value={selectedDate}
+                value={selectedDate || getLocalDateString()}
                 onChange={handleDateChange}
                 className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -476,20 +506,28 @@ function TodayAttendance() {
               </div>
             )}
           </div>
-          
-          {/* Search */}
-          {role === 'admin' && (
-            <div className="relative mt-4">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search students by name, NIM, or group..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          )}
+
+          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <button
+              onClick={handleClearFilters}
+              className="w-full md:w-auto bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition"
+            >
+              Clear Filters
+            </button>
+
+            {role === 'admin' && (
+              <div className="relative w-full md:w-1/2">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search students by name, NIM, or group..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -652,7 +690,9 @@ function TodayAttendance() {
                   {adminAttendance.length === 0 ? (
                     <tr>
                       <td colSpan="8" className="px-4 py-8 text-center text-slate-400">
-                        No attendance records found for this date
+                        {isTodaySelected && !hasActualTodayAttendance
+                          ? 'No attendance recorded for today yet'
+                          : 'No attendance records found for this date'}
                       </td>
                     </tr>
                   ) : (
@@ -708,16 +748,22 @@ function TodayAttendance() {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            <div className="bg-white rounded-xl border p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">Total Students</p>
-                  <p className="text-2xl font-bold text-slate-800">{stats?.total || 0}</p>
-                </div>
-                <Users className="w-8 h-8 text-blue-500" />
-              </div>
+          {noActualAttendanceToday ? (
+            <div className="bg-white rounded-xl border p-8 text-center text-slate-500 shadow-sm mb-6">
+              <p className="text-lg font-semibold text-slate-800">No attendance recorded for today yet.</p>
+              <p className="mt-2 text-sm text-slate-500">Refresh after students scan in, or select another date to view past attendance.</p>
             </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+              <div className="bg-white rounded-xl border p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">Total Students</p>
+                    <p className="text-2xl font-bold text-slate-800">{stats?.total || 0}</p>
+                  </div>
+                  <Users className="w-8 h-8 text-blue-500" />
+                </div>
+              </div>
             <div className="bg-white rounded-xl border p-4 border-green-200 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
@@ -755,6 +801,7 @@ function TodayAttendance() {
               </div>
             </div>
           </div>
+          )}
 
           {/* Attendance Rate Bar */}
           <div className="bg-white rounded-xl border p-4 mb-6 shadow-sm">
@@ -813,10 +860,12 @@ function TodayAttendance() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {attendanceData.students?.length === 0 ? (
+                  {attendanceData.students?.length === 0 || (selectedDate === getLocalDateString() && attendanceData.students?.every(s => !s.timestamp)) ? (
                     <tr>
                       <td colSpan={role === 'admin' ? 8 : 7} className="px-4 py-8 text-center text-slate-400">
-                        No students in this group
+                        {selectedDate === getLocalDateString() && attendanceData.students?.length > 0
+                          ? 'No attendance recorded for today yet'
+                          : 'No students in this group'}
                       </td>
                     </tr>
                   ) : (

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { FileDown, Printer, Calendar as CalendarIcon } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
+import { getLocalDateString } from '../utils/date';
 
 function Reports() {
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
 

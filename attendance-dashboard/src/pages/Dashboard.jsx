@@ -9,6 +9,7 @@ import {
   Activity
 } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
+import { getLocalDateString } from '../utils/date';
 
 function Dashboard() {
   const [stats, setStats] = useState({
@@ -35,8 +36,8 @@ function Dashboard() {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Get today's attendance (using schedule_id=1 for now)
-      const today = new Date().toISOString().split('T')[0];
+      // Get today's attendance
+      const today = getLocalDateString();
       const response = await attendanceAPI.getAttendanceReport(1, today);
       
       if (response.data.status === 'success') {

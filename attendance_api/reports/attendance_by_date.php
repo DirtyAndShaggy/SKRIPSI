@@ -5,6 +5,7 @@ include("../config/database.php");
 date_default_timezone_set('Asia/Jakarta');
 
 $date = $_GET['date'] ?? date("Y-m-d");
+$date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : date("Y-m-d");
 $dayName = date('l', strtotime($date));
 
 $query = "

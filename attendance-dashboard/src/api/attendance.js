@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getLocalDateString } from '../utils/date';
 
 // Use localhost for testing (since XAMPP is on the same computer)
 const API_BASE = 'http://localhost/attendance_api';
@@ -145,7 +146,7 @@ export const attendanceAPI = {
   
   // Today's attendance (current schedule)
   getTodayAttendance: () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateString();
     return api.get(`/reports/attendance_report.php?schedule_id=1&date=${today}`);
   },
   

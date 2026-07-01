@@ -4,6 +4,7 @@ include("../config/database.php");
 
 $schedule_id = $_GET['schedule_id'] ?? null;
 $date = $_GET['date'] ?? date("Y-m-d");
+$date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : date("Y-m-d");
 
 if (!$schedule_id) {
     echo json_encode(["status" => "error", "message" => "schedule_id required"]);
