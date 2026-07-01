@@ -85,7 +85,7 @@ $student_name = $student['name'];
 /* -----------------------------
    2. Find Active Schedule for this Device
 ----------------------------- */
-$today = date("l"); // Monday, Tuesday, etc.
+$today = date("l");
 $currentTime = date("H:i:s");
 
 $scheduleQuery = "
@@ -94,6 +94,7 @@ SELECT
     cs.class_id, 
     cs.start_time, 
     cs.end_time,
+    cs.grace_period,
     c.class_name,
     c.class_code
 FROM class_schedules cs
@@ -128,49 +129,17 @@ $schedule_id = $schedule['schedule_id'];
 $class_id = $schedule['class_id'];
 $class_name = $schedule['class_name'];
 $schedule_start = $schedule['start_time'];
+$grace_period = $schedule['grace_period'] ?? 15;
 
 /* -----------------------------
-   3. Check if Student is ASSIGNED in the right GROUP for this Schedule
+   3. ✅ Check if Student is ASSIGNED to this Schedule
+   (This is the ONLY check you need)
 ----------------------------- */
-$groupCheckQuery = "
-SELECT sc.id 
-FROM student_classes sc
-JOIN class_schedules cs ON sc.group_id = cs.group_id
-WHERE sc.student_id = '$student_id'
-AND cs.schedule_id = '$schedule_id'
-AND sc.is_active = 1
-";
-
-$groupCheckResult = mysqli_query($conn, $groupCheckQuery);
-
-if (!$groupCheckResult || mysqli_num_rows($groupCheckResult) === 0) {
-    writeLog(
-        $conn,
-        $device_id,
-        $fingerprint_id,
-        $student_id,
-        'wrong_group',
-        "Student not assigned to the group for this schedule"
-    );
-    
-    echo json_encode([
-        "status" => "rejected",
-        "message" => "Student not enrolled in this class group"
-    ]);
-    exit;
-}
-
 $assignmentQuery = "
-SELECT id FROM schedule_students 
+SELECT id 
+FROM schedule_students 
 WHERE schedule_id = '$schedule_id' 
 AND student_id = '$student_id'
-";
-
-$enrollmentQuery = "
-SELECT id FROM student_classes 
-WHERE student_id = '$student_id' 
-AND class_id = '$class_id'
-AND is_active = 1
 ";
 
 $assignmentResult = mysqli_query($conn, $assignmentQuery);
@@ -193,7 +162,7 @@ if (!$assignmentResult || mysqli_num_rows($assignmentResult) === 0) {
 }
 
 /* -----------------------------
-   4. Check for Duplicate Attendance (Same schedule, same day)
+   4. Check for Duplicate Attendance
 ----------------------------- */
 $dateToday = date("Y-m-d");
 
@@ -227,8 +196,7 @@ if ($duplicateResult && mysqli_num_rows($duplicateResult) > 0) {
 /* -----------------------------
    5. Late Detection
 ----------------------------- */
-$grace_minutes = 15; // Configurable
-$late_threshold = date("H:i:s", strtotime("$schedule_start + $grace_minutes minutes"));
+$late_threshold = date("H:i:s", strtotime("$schedule_start + $grace_period minutes"));
 
 if ($currentTime > $late_threshold) {
     $attendance_status = 'Late';
@@ -238,7 +206,7 @@ if ($currentTime > $late_threshold) {
         $fingerprint_id,
         $student_id,
         'late_arrival',
-        "Arrived at $currentTime, class started at $schedule_start"
+        "Arrived at $currentTime, class started at $schedule_start (Grace: $grace_period min)"
     );
 } else {
     $attendance_status = 'Present';

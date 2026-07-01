@@ -84,7 +84,7 @@ function App() {
         } />
         <Route path="/attendance" element={
           <ProtectedRoute>
-            <Layout>
+            <Layout user={user}>
               <TodayAttendance />
             </Layout>
           </ProtectedRoute>

@@ -103,6 +103,11 @@ export const attendanceAPI = {
   return Promise.reject('No user logged in');
   },
 
+  //Attendance
+  getAttendanceBySchedule: (scheduleId, date) => 
+  api.get(`/reports/attendance_by_schedule.php?schedule_id=${scheduleId}&date=${date}`),
+  getAttendanceByDate: (date) => 
+  api.get(`/reports/attendance_by_date.php?date=${date}`),
 
   // Schedules
   getAllSchedules: () => api.get('/schedules/list.php'),
@@ -144,6 +149,9 @@ export const attendanceAPI = {
     return api.get(`/reports/attendance_report.php?schedule_id=1&date=${today}`);
   },
   
+  //Attendance Logs
+  getAttendanceLogs: (limit = 100) => api.get(`/attendance/logs.php?limit=${limit}`),
+
   // Enrollment
   requestEnrollment: (studentId) => 
   api.post('/enrollment/create.php', { 

@@ -257,8 +257,8 @@ function Students() {
     if (semesterFilter && student.semester != semesterFilter) return false;
     
     // Status filter
-    if (statusFilter === 'active' && student.fingerprint_id) return true;
-    if (statusFilter === 'inactive' && !student.fingerprint_id) return true;
+    if (statusFilter === 'active') return Boolean(student.fingerprint_id);
+    if (statusFilter === 'inactive') return !student.fingerprint_id;
     if (statusFilter === 'all') return true;
     
     return true;

@@ -2,7 +2,6 @@
 include("../cors_headers.php");
 include("../config/database.php");
 
-// Get user_id from session or request
 $user_id = $_GET['user_id'] ?? 0;
 
 if (!$user_id) {
@@ -22,37 +21,32 @@ if (!$lecturerResult || mysqli_num_rows($lecturerResult) === 0) {
 $lecturer = mysqli_fetch_assoc($lecturerResult);
 $lecturer_id = $lecturer['lecturer_id'];
 
-// Get all groups this lecturer teaches
+// Get classes taught by this lecturer
 $query = "
 SELECT 
-    cg.group_id,
-    cg.class_id,
-    cg.group_name,
-    cg.group_code,
-    cg.capacity,
-    cg.semester,
-    cg.academic_year,
+    c.class_id,
     c.class_code,
     c.class_name,
     c.class_type,
-    l.full_name as lecturer_name,
-    (SELECT COUNT(*) FROM student_classes sc WHERE sc.group_id = cg.group_id AND sc.is_active = 1) as student_count,
-    (SELECT COUNT(*) FROM class_schedules cs WHERE cs.group_id = cg.group_id) as schedule_count
-FROM class_groups cg
-JOIN classes c ON cg.class_id = c.class_id
-LEFT JOIN lecturers l ON cg.lecturer_id = l.lecturer_id
-WHERE cg.lecturer_id = '$lecturer_id'
-AND cg.is_active = 1
-ORDER BY c.class_name, cg.group_name
+    c.is_active,
+    (SELECT COUNT(DISTINCT s.student_id) 
+     FROM students s 
+     JOIN `groups` g ON s.group_id = g.group_id 
+     JOIN group_classes gc ON g.group_id = gc.group_id 
+     WHERE gc.class_id = c.class_id AND gc.is_active = 1) as student_count
+FROM classes c
+WHERE c.lecturer_id = '$lecturer_id'
+AND c.is_active = 1
+ORDER BY c.class_name ASC
 ";
 
 $result = mysqli_query($conn, $query);
 
-$groups = [];
+$classes = [];
 while ($row = mysqli_fetch_assoc($result)) {
-    $groups[] = $row;
+    $classes[] = $row;
 }
 
-echo json_encode(["status" => "success", "groups" => $groups]);
+echo json_encode(["status" => "success", "classes" => $classes]);
 mysqli_close($conn);
 ?>
