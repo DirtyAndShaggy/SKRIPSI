@@ -29,6 +29,10 @@ export const attendanceAPI = {
     localStorage.removeItem('user');
   },
   
+  // Dahboard
+  getDashboardStats: (userId, period, role) => 
+    api.get(`/reports/dashboard_stats.php?user_id=${userId}&period=${period}&role=${role}`),
+
   // Students
   getStudents: () => api.get('/students/list.php'),
   addStudent: (data) => api.post('/students/add.php', data),

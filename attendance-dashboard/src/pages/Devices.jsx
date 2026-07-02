@@ -269,8 +269,13 @@ function Devices() {
           
           if (resultResponse.data.status === 'completed') {
             // Success! Got the slot list
-            const slotListStr = resultResponse.data.slot_list || '';
-            const slots = slotListStr ? slotListStr.split(',').map(Number) : [];
+            const slotListStr = resultResponse.data.slots || resultResponse.data.slot_list || '';
+            const normalizedSlots = slotListStr
+              .split(',')
+              .map((slot) => slot.trim())
+              .filter(Boolean)
+              .map((slot) => Number(slot));
+            const slots = normalizedSlots.filter((slot) => !Number.isNaN(slot));
             setSlotList(slots);
             setIsSynced(true);
             setSyncing(false);

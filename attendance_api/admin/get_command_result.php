@@ -31,15 +31,14 @@ $query = "SELECT * FROM admin_commands
 $result = mysqli_query($conn, $query);
 
 if ($row = mysqli_fetch_assoc($result)) {
-    // Parse result to extract slot_list
     $slot_list = '';
     if ($command_type === 'LIST') {
-        // Extract slot_list from result or from a separate field
-        // For now, we'll use a simple approach
-        $slot_list = $row['result'] ?? '';
-        // Try to extract slot list from result
-        if (preg_match('/slots: (.+)/', $slot_list, $matches)) {
-            $slot_list = $matches[1];
+        $rawResult = $row['result'] ?? '';
+
+        if (preg_match('/(?:^|\s|\|)slot[_ -]?list\s*[:=]\s*(.+)$/i', $rawResult, $matches)) {
+            $slot_list = trim($matches[1]);
+        } elseif (preg_match('/(?:^|\s|\|)slots?\s*[:=]\s*(.+)$/i', $rawResult, $matches)) {
+            $slot_list = trim($matches[1]);
         }
     }
     
@@ -47,7 +46,8 @@ if ($row = mysqli_fetch_assoc($result)) {
         "status" => "completed",
         "command_id" => $row['command_id'],
         "result" => $row['result'],
-        "slot_list" => $slot_list
+        "slot_list" => $slot_list,
+        "slots" => $slot_list
     ]);
 } else {
     echo json_encode(["status" => "pending"]);

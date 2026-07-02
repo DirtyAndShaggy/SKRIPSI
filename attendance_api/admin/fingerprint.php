@@ -106,13 +106,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'mark_complete') {
     $command_type = $data['command_type'] ?? '';
     $result = $data['result'] ?? '';
     $slot_list = $data['slot_list'] ?? '';
-    $slot_deleted = $data['slot_deleted'] ?? null;
+    $slot_deleted_raw = $data['slot_deleted'] ?? $data['slot'] ?? null;
+    $slot_deleted = null;
+
+    if ($slot_deleted_raw !== null && $slot_deleted_raw !== '') {
+        $slot_deleted = (int) $slot_deleted_raw;
+    }
     
+    $command_result_text = $result;
+
+    // ─── LIST: Save the slot list ───
+    if ($command_type === 'LIST') {
+        $normalizedSlotList = trim($slot_list);
+        if ($normalizedSlotList === '') {
+            $normalizedSlotList = trim($result);
+            if (preg_match('/slot(?:s)?\s*[:=]\s*(.+)/i', $normalizedSlotList, $matches)) {
+                $normalizedSlotList = $matches[1];
+            } elseif (preg_match('/(\d+(?:\s*,\s*\d+)*)/', $normalizedSlotList, $matches)) {
+                $normalizedSlotList = $matches[1];
+            }
+        }
+
+        if ($normalizedSlotList !== '') {
+            $command_result_text = 'slot_list:' . $normalizedSlotList;
+        }
+    }
+
+    $escapedResult = mysqli_real_escape_string($conn, $command_result_text);
+
     // Update command status with result
     $update = "UPDATE admin_commands 
                SET status = 'completed', 
                    completed_at = NOW(), 
-                   result = '$result' 
+                   result = '$escapedResult' 
                WHERE command_id = $command_id";
     
     if (!mysqli_query($conn, $update)) {
@@ -127,26 +153,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'mark_complete') {
     }
     
     // ─── LIST: Save the slot list ───
-    if ($command_type === 'LIST' && $slot_list) {
+    if ($command_type === 'LIST') {
         $log = "INSERT INTO attendance_logs (device_id, event_type, message) 
-                VALUES ('ESP32_01', 'slot_list', 'Used slots: $slot_list')";
+                VALUES ('ESP32_01', 'slot_list', 'Used slots: $command_result_text')";
         mysqli_query($conn, $log);
     }
     
     // ─── DELETE_SLOT: Clear student's fingerprint_id ───
-    if ($command_type === 'DELETE_SLOT' && $slot_deleted) {
-        $studentQuery = "SELECT student_id, name FROM students WHERE fingerprint_id = '$slot_deleted'";
-        $studentResult = mysqli_query($conn, $studentQuery);
-        $student = mysqli_fetch_assoc($studentResult);
-        
-        if ($student) {
-            $clearQuery = "UPDATE students SET fingerprint_id = NULL WHERE fingerprint_id = '$slot_deleted'";
-            mysqli_query($conn, $clearQuery);
+    if ($command_type === 'DELETE_SLOT') {
+        $slot_deleted = null;
+        if (isset($data['slot_deleted']) && $data['slot_deleted'] !== '') {
+            $slot_deleted = (int) $data['slot_deleted'];
+        } elseif (isset($data['slot']) && $data['slot'] !== '') {
+            $slot_deleted = (int) $data['slot'];
+        } elseif (isset($data['deleted_slot']) && $data['deleted_slot'] !== '') {
+            $slot_deleted = (int) $data['deleted_slot'];
+        } elseif (preg_match('/slot\s*(\d+)/i', $result, $matches)) {
+            $slot_deleted = (int) $matches[1];
+        }
+
+        if ($slot_deleted !== null) {
+            $studentQuery = "SELECT student_id, name FROM students WHERE fingerprint_id = $slot_deleted";
+            $studentResult = mysqli_query($conn, $studentQuery);
+            $student = mysqli_fetch_assoc($studentResult);
             
-            $log = "INSERT INTO attendance_logs (device_id, event_type, message) 
-                    VALUES ('ESP32_01', 'slot_deleted', 
-                    'Slot $slot_deleted cleared from student {$student['name']} (ID: {$student['student_id']})')";
-            mysqli_query($conn, $log);
+            if ($student) {
+                $clearQuery = "UPDATE students SET fingerprint_id = NULL WHERE fingerprint_id = $slot_deleted";
+                mysqli_query($conn, $clearQuery);
+                
+                $safeName = mysqli_real_escape_string($conn, $student['name']);
+                $log = "INSERT INTO attendance_logs (device_id, event_type, message) 
+                        VALUES ('ESP32_01', 'slot_deleted', 
+                        'Slot $slot_deleted cleared from student $safeName (ID: {$student['student_id']})')";
+                mysqli_query($conn, $log);
+            }
         }
     }
     
