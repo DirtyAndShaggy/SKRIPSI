@@ -46,8 +46,8 @@ if (mysqli_num_rows($checkResult) > 0) {
     echo json_encode(["status" => "error", "message" => "Schedule overlaps with existing schedule for this class and group"]);
     exit;
 }
-$grace_period = $data['grace_period'] ?? 15;
-$grace_period_value = $grace_period ? "'$grace_period'" : "15";
+$grace_period = isset($data['grace_period']) ? intval($data['grace_period']) : 15;
+$grace_period_value = "'$grace_period'";
 $room_value = $room_id ? "'$room_id'" : "NULL";
 $semester_value = $semester ? "'$semester'" : "NULL";
 $group_value = $group_id ? "'$group_id'" : "NULL";
@@ -65,6 +65,28 @@ $query = "UPDATE class_schedules SET
           WHERE schedule_id = '$schedule_id'";
 
 if (mysqli_query($conn, $query)) {
+    $timezone = new DateTimeZone('Asia/Jakarta');
+    $todayDate = date('Y-m-d');
+    $scheduleStart = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', "$todayDate $start_time", $timezone);
+    $lateThreshold = $scheduleStart->modify("+$grace_period minutes");
+
+    $attendanceQuery = "
+        SELECT attendance_id, timestamp
+        FROM attendance
+        WHERE schedule_id = '$schedule_id'
+        AND DATE(timestamp) = '$todayDate'
+        AND status IN ('Present', 'Late')
+    ";
+    $attendanceResult = mysqli_query($conn, $attendanceQuery);
+
+    while ($attendanceRow = mysqli_fetch_assoc($attendanceResult)) {
+        $attendanceTime = new DateTime($attendanceRow['timestamp'], $timezone);
+        $newStatus = ($attendanceTime > $lateThreshold) ? 'Late' : 'Present';
+        $attendanceId = $attendanceRow['attendance_id'];
+
+        mysqli_query($conn, "UPDATE attendance SET status = '$newStatus' WHERE attendance_id = '$attendanceId'");
+    }
+
     echo json_encode(["status" => "success", "message" => "Schedule updated"]);
 } else {
     echo json_encode(["status" => "error", "message" => mysqli_error($conn)]);

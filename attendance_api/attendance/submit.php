@@ -162,21 +162,79 @@ if (!$assignmentResult || mysqli_num_rows($assignmentResult) === 0) {
 }
 
 /* -----------------------------
-   4. Check for Duplicate Attendance
+   4. Late Detection
 ----------------------------- */
 $dateToday = date("Y-m-d");
+$timezone = new DateTimeZone('Asia/Jakarta');
+$now = new DateTime('now', $timezone);
+$nowTime = $now->format('H:i:s');
 
+$startDateTime = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', "$dateToday $schedule_start", $timezone);
+$graceMinutes = max(0, intval($grace_period));
+$lateThreshold = $startDateTime->modify("+$graceMinutes minutes");
+$timestamp = $now->format('Y-m-d H:i:s');
+
+if ($now > $lateThreshold) {
+    $attendance_status = 'Late';
+} else {
+    $attendance_status = 'Present';
+}
+
+writeLog(
+    $conn,
+    $device_id,
+    $fingerprint_id,
+    $student_id,
+    $attendance_status === 'Late' ? 'late_arrival' : 'attendance_check',
+    "Arrived at $nowTime, class started at $schedule_start (Grace: $graceMinutes min)"
+);
+
+/* -----------------------------
+   5. Check for Existing Attendance
+----------------------------- */
 $duplicateQuery = "
-SELECT attendance_id
+SELECT attendance_id, status
 FROM attendance
 WHERE student_id = '$student_id'
 AND schedule_id = '$schedule_id'
 AND DATE(timestamp) = '$dateToday'
+LIMIT 1
 ";
 
 $duplicateResult = mysqli_query($conn, $duplicateQuery);
 
 if ($duplicateResult && mysqli_num_rows($duplicateResult) > 0) {
+    $existingAttendance = mysqli_fetch_assoc($duplicateResult);
+    $existingAttendanceId = $existingAttendance['attendance_id'];
+    $existingStatus = $existingAttendance['status'];
+
+    if ($existingStatus === 'Late' && $attendance_status === 'Present') {
+        $updateQuery = "
+        UPDATE attendance
+        SET status = '$attendance_status', timestamp = '$timestamp', sync_status = 'synced'
+        WHERE attendance_id = '$existingAttendanceId'
+        ";
+
+        if (mysqli_query($conn, $updateQuery)) {
+            writeLog(
+                $conn,
+                $device_id,
+                $fingerprint_id,
+                $student_id,
+                'attendance_updated',
+                "Updated existing attendance to $attendance_status based on current grace period"
+            );
+
+            echo json_encode([
+                "status" => "success",
+                "message" => "Attendance recorded as " . $attendance_status,
+                "student_name" => $student_name,
+                "class_name" => $class_name
+            ]);
+            exit;
+        }
+    }
+
     writeLog(
         $conn,
         $device_id,
@@ -191,25 +249,6 @@ if ($duplicateResult && mysqli_num_rows($duplicateResult) > 0) {
         "message" => "Attendance already recorded for this session"
     ]);
     exit;
-}
-
-/* -----------------------------
-   5. Late Detection
------------------------------ */
-$late_threshold = date("H:i:s", strtotime("$schedule_start + $grace_period minutes"));
-
-if ($currentTime > $late_threshold) {
-    $attendance_status = 'Late';
-    writeLog(
-        $conn,
-        $device_id,
-        $fingerprint_id,
-        $student_id,
-        'late_arrival',
-        "Arrived at $currentTime, class started at $schedule_start (Grace: $grace_period min)"
-    );
-} else {
-    $attendance_status = 'Present';
 }
 
 /* -----------------------------

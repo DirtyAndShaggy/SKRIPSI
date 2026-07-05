@@ -390,6 +390,8 @@ const validateTimes = (start, end) => {
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
     const [loadingStudents, setLoadingStudents] = useState(true);
     const [semesterFilter, setSemesterFilter] = useState('');
+    const [cohortFilter, setCohortFilter] = useState('');
+    const [groupFilter, setGroupFilter] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -435,7 +437,17 @@ const validateTimes = (start, end) => {
       
       // Semester filter
       if (semesterFilter) {
-        filtered = filtered.filter(s => s.semester == semesterFilter);
+        filtered = filtered.filter(s => String(s.semester) === String(semesterFilter));
+      }
+
+      // Cohort filter
+      if (cohortFilter) {
+        filtered = filtered.filter(s => String(s.cohort_id) === String(cohortFilter));
+      }
+
+      // Group filter
+      if (groupFilter) {
+        filtered = filtered.filter(s => String(s.group_id) === String(groupFilter));
       }
       
       // Search filter
@@ -449,7 +461,7 @@ const validateTimes = (start, end) => {
       
       setFilteredStudents(filtered);
       setCurrentPage(1);
-    }, [availableStudents, semesterFilter, searchTerm]);
+    }, [availableStudents, semesterFilter, cohortFilter, groupFilter, searchTerm]);
 
     const handleToggleStudent = (studentId) => {
       setSelectedStudentIds(prev =>
@@ -606,6 +618,40 @@ const validateTimes = (start, end) => {
                 {semesterOptions.map(sem => (
                   <option key={sem} value={sem}>Semester {sem}</option>
                 ))}
+              </select>
+            </div>
+            <div className="w-44">
+              <select
+                value={cohortFilter}
+                onChange={(e) => {
+                  setCohortFilter(e.target.value);
+                  setGroupFilter('');
+                }}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Cohorts</option>
+                {cohorts.map(cohort => (
+                  <option key={cohort.cohort_id} value={cohort.cohort_id}>
+                    {cohort.cohort_name} {cohort.cohort_code ? `(${cohort.cohort_code})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="w-44">
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                disabled={!cohortFilter}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              >
+                <option value="">All Groups</option>
+                {allGroups
+                  .filter(group => !cohortFilter || String(group.cohort_id) === String(cohortFilter))
+                  .map(group => (
+                    <option key={group.group_id} value={group.group_id}>
+                      {group.group_name} {group.group_code ? `(${group.group_code})` : ''}
+                    </option>
+                  ))}
               </select>
             </div>
             <div className="flex items-center gap-2">
