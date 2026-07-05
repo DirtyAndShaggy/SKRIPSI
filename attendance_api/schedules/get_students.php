@@ -39,8 +39,13 @@ $semesterFilter = $semester_filter ? "AND s.semester = '$semester_filter'" : "";
 
 // First try with is_active column
 $studentQuery = "
-SELECT s.student_id, s.nim, s.name, s.semester, s.academic_year, s.fingerprint_id
+SELECT s.student_id, s.nim, s.name, s.semester, s.academic_year, s.fingerprint_id,
+       s.cohort_id, s.group_id,
+       c.cohort_name, c.cohort_code,
+       g.group_name, g.group_code
 FROM students s
+LEFT JOIN cohorts c ON s.cohort_id = c.cohort_id
+LEFT JOIN `groups` g ON s.group_id = g.group_id
 WHERE 1=1
 $semesterFilter
 ORDER BY s.name ASC

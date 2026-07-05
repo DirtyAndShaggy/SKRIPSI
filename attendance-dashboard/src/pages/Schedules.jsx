@@ -116,9 +116,19 @@ const validateTimes = (start, end) => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(() => loadData(false), 30000);
+
+    if (showForm || showStudentModal) {
+      return undefined;
+    }
+
+    const interval = setInterval(() => {
+      if (!showForm && !showStudentModal) {
+        loadData(false);
+      }
+    }, 30000);
+
     return () => clearInterval(interval);
-  }, []);
+  }, [showForm, showStudentModal]);
 
   const loadData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -342,8 +352,15 @@ const validateTimes = (start, end) => {
   };
 
   const selectedClass = classes.find(cls => String(cls.class_id) === String(formData.class_id));
-  const selectedClassGroups = selectedClass?.assigned_groups || [];
-  const selectedClassCohort = selectedClassGroups?.[0];
+  const selectedClassCohortId = selectedClass?.assigned_groups?.[0]?.cohort_id
+    ? String(selectedClass.assigned_groups[0].cohort_id)
+    : '';
+  const selectedClassGroups = selectedClassCohortId
+    ? allGroups.filter(group => String(group.cohort_id) === selectedClassCohortId)
+    : (selectedClass?.assigned_groups || []);
+  const selectedClassCohort = selectedClassCohortId
+    ? cohorts.find(cohort => String(cohort.cohort_id) === selectedClassCohortId)
+    : (selectedClass?.assigned_groups?.[0] || null);
 
   const getStatusBadge = (startTime, endTime, dayOfWeek) => {
     const now = new Date();
@@ -623,6 +640,7 @@ const validateTimes = (start, end) => {
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">NIM</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Name</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Group</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Semester</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Fingerprint</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th>
@@ -631,7 +649,7 @@ const validateTimes = (start, end) => {
               <tbody className="divide-y divide-gray-100">
                 {currentPageStudents.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan="7" className="px-4 py-8 text-center text-gray-400">
                       {availableStudents.length === 0 
                         ? 'No students found in system' 
                         : 'No students match the filters'}
@@ -650,6 +668,15 @@ const validateTimes = (start, end) => {
                       </td>
                       <td className="px-4 py-2 text-sm font-mono">{student.nim}</td>
                       <td className="px-4 py-2 text-sm">{student.name}</td>
+                      <td className="px-4 py-2 text-sm">
+                        {student.group_name ? (
+                          <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">
+                            {student.group_code || student.group_name}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-sm">{student.semester ? `Semester ${student.semester}` : '-'}</td>
                       <td className="px-4 py-2 text-sm">
                         {student.fingerprint_id ? (

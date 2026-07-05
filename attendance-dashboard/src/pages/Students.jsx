@@ -148,18 +148,23 @@ function Students() {
   };
 
   const handleEdit = (student) => {
-    setEditingStudent(student);
-    setFormData({
-      nim: student.nim,
-      name: student.name,
-      email: student.email || '',
-      semester: student.semester || '',
-      academic_year: student.academic_year || '',
-      fingerprint_id: student.fingerprint_id || '',
-      cohort_id: student.cohort_id || '',
-      group_id: student.group_id || ''
-    });
-    setShowForm(true);
+    try {
+      setEditingStudent(student);
+      setFormData({
+        nim: student.nim,
+        name: student.name,
+        email: student.email || '',
+        semester: student.semester || '',
+        academic_year: student.academic_year || '',
+        fingerprint_id: student.fingerprint_id || '',
+        cohort_id: student.cohort_id || '',
+        group_id: student.group_id || ''
+      });
+      setShowForm(true);
+    } catch (err) {
+      console.error('handleEdit failed', err);
+      alert('Unable to open edit form. See console for details.');
+    }
   };
 
   const handleEnroll = async (studentId) => {
@@ -639,7 +644,8 @@ function Students() {
                       <div className="inline-flex flex-wrap gap-1 justify-end">
                         {!student.fingerprint_id ? (
                           <button
-                            onClick={() => handleEnroll(student.student_id)}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleEnroll(student.student_id); }}
                             disabled={enrollingStudentId === student.student_id}
                             className="text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded transition-colors flex items-center gap-1 text-xs disabled:opacity-50"
                           >
@@ -652,7 +658,8 @@ function Students() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleEnroll(student.student_id)}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleEnroll(student.student_id); }}
                             disabled={enrollingStudentId === student.student_id}
                             className="text-yellow-600 hover:text-yellow-800 px-2 py-1 hover:bg-yellow-50 rounded transition-colors flex items-center gap-1 text-xs disabled:opacity-50"
                           >
@@ -661,13 +668,15 @@ function Students() {
                           </button>
                         )}
                         <button
-                          onClick={() => handleEdit(student)}
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleEdit(student); }}
                           className="text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded transition-colors"
                         >
                           Edit
                         </button>
                         <button
-                          onClick={() => handleDelete(student.student_id)}
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDelete(student.student_id); }}
                           className="text-red-600 hover:text-red-800 px-2 py-1 hover:bg-red-50 rounded transition-colors"
                         >
                           Delete
