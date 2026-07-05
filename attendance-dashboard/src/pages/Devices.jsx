@@ -333,6 +333,36 @@ function Devices() {
     fetchSlotList(deviceId);
   };
 
+  const loadSavedSlotList = async (deviceId) => {
+    try {
+      const response = await attendanceAPI.getCommandResult(deviceId, 'LIST');
+      if (response.data.status === 'completed') {
+        const slotListStr = response.data.slots || response.data.slot_list || '';
+        const normalizedSlots = slotListStr
+          .split(',')
+          .map((slot) => slot.trim())
+          .filter(Boolean)
+          .map((slot) => Number(slot));
+        const slots = normalizedSlots.filter((slot) => !Number.isNaN(slot));
+        setSlotList(slots);
+        setIsSynced(true);
+      } else {
+        setSlotList([]);
+        setIsSynced(false);
+      }
+    } catch (err) {
+      console.error('Failed to load saved slot list:', err);
+      setSlotList([]);
+      setIsSynced(false);
+    }
+  };
+
+  useEffect(() => {
+    if (expandedDevice) {
+      loadSavedSlotList(expandedDevice);
+    }
+  }, [expandedDevice]);
+
   const openConfirmModal = (title, message, confirmText, confirmColor, showInput, extraInfo, onConfirm) => {
     setConfirmModal({
       isOpen: true,
@@ -351,9 +381,6 @@ function Devices() {
       setExpandedDevice(null);
     } else {
       setExpandedDevice(deviceId);
-      // Reset sync state when opening
-      setIsSynced(false);
-      setSlotList([]);
     }
   };
 

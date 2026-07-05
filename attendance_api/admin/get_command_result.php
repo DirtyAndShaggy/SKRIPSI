@@ -20,17 +20,22 @@ if (empty($command_type)) {
     exit;
 }
 
-// Get the most recent completed command of this type
+// Get the most recent command of this type (pending or completed)
 $query = "SELECT * FROM admin_commands 
           WHERE device_id = '$device_id' 
           AND command_type = '$command_type' 
-          AND status = 'completed' 
-          ORDER BY completed_at DESC 
+          ORDER BY command_id DESC 
           LIMIT 1";
 
 $result = mysqli_query($conn, $query);
 
 if ($row = mysqli_fetch_assoc($result)) {
+    if ($row['status'] !== 'completed') {
+        echo json_encode(["status" => "pending"]);
+        mysqli_close($conn);
+        exit;
+    }
+
     $slot_list = '';
     if ($command_type === 'LIST') {
         $rawResult = $row['result'] ?? '';
