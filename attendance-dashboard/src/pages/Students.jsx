@@ -236,33 +236,42 @@ function Students() {
   };
 
   // ─── FILTER STUDENTS ───
-  const filteredStudents = students.filter(student => {
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      const matches = 
-        student.nim?.toLowerCase().includes(term) ||
-        student.name?.toLowerCase().includes(term) ||
-        student.email?.toLowerCase().includes(term);
-      if (!matches) return false;
-    }
-    
-    // Cohort filter
-    if (cohortFilter && student.cohort_id != cohortFilter) return false;
-    
-    // Group filter
-    if (groupFilter && student.group_id != groupFilter) return false;
-    
-    // Semester filter
-    if (semesterFilter && student.semester != semesterFilter) return false;
-    
-    // Status filter
-    if (statusFilter === 'active') return Boolean(student.fingerprint_id);
-    if (statusFilter === 'inactive') return !student.fingerprint_id;
-    if (statusFilter === 'all') return true;
-    
-    return true;
-  });
+  const filteredStudents = students
+    .filter(student => {
+      // Search filter
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const matches = 
+          student.nim?.toLowerCase().includes(term) ||
+          student.name?.toLowerCase().includes(term) ||
+          student.email?.toLowerCase().includes(term);
+        if (!matches) return false;
+      }
+      
+      // Cohort filter
+      if (cohortFilter && student.cohort_id != cohortFilter) return false;
+      
+      // Group filter
+      if (groupFilter && student.group_id != groupFilter) return false;
+      
+      // Semester filter
+      if (semesterFilter && student.semester != semesterFilter) return false;
+      
+      // Status filter
+      if (statusFilter === 'active') return Boolean(student.fingerprint_id);
+      if (statusFilter === 'inactive') return !student.fingerprint_id;
+      if (statusFilter === 'all') return true;
+      
+      return true;
+    })
+    .sort((a, b) => {
+      const aId = Number(a.student_id);
+      const bId = Number(b.student_id);
+      if (!Number.isFinite(aId) || !Number.isFinite(bId)) {
+        return String(a.student_id).localeCompare(String(b.student_id));
+      }
+      return aId - bId;
+    });
 
   // Get cohorts for filter dropdown
   const filterCohorts = cohorts.map(c => ({ ...c, cohort_id: String(c.cohort_id) }));
@@ -563,6 +572,7 @@ function Students() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-500">#</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">NIM</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Name</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Email</th>
@@ -570,19 +580,20 @@ function Students() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Group</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Semester</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Fingerprint</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
                     No students found. Add your first student!
                   </td>
                 </tr>
               ) : (
-                filteredStudents.map((student) => (
+                filteredStudents.map((student, index) => (
                   <tr key={student.student_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-center text-slate-500">{index + 1}</td>
                     <td className="px-4 py-3 text-sm">{student.nim}</td>
                     <td className="px-4 py-3 text-sm">{student.name}</td>
                     <td className="px-4 py-3 text-sm">{student.email || '-'}</td>
@@ -624,8 +635,8 @@ function Students() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex flex-wrap gap-1">
+                    <td className="px-4 py-3 text-sm text-right">
+                      <div className="inline-flex flex-wrap gap-1 justify-end">
                         {!student.fingerprint_id ? (
                           <button
                             onClick={() => handleEnroll(student.student_id)}
