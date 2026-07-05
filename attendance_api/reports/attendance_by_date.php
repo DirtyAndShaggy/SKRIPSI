@@ -30,20 +30,19 @@ SELECT
     s.name AS student_name,
     s.semester AS student_semester,
     s.fingerprint_id,
-    COALESCE(a.status, 'Absent') AS status,
+    a.status,
     a.timestamp,
     a.device_id,
     a.sync_status
-FROM class_schedules cs
+FROM attendance a
+JOIN class_schedules cs ON a.schedule_id = cs.schedule_id
 JOIN classes c ON cs.class_id = c.class_id
 LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
 LEFT JOIN `groups` g ON cs.group_id = g.group_id
 LEFT JOIN rooms r ON cs.room_id = r.room_id
-JOIN schedule_students ss ON ss.schedule_id = cs.schedule_id
-JOIN students s ON ss.student_id = s.student_id
-LEFT JOIN attendance a ON a.schedule_id = cs.schedule_id
-    AND a.student_id = s.student_id
-    AND DATE(a.timestamp) = '$date'
+JOIN students s ON a.student_id = s.student_id
+WHERE DATE(a.timestamp) = '$date'
+AND cs.day_of_week = '$dayName'
 ORDER BY cs.schedule_id ASC, s.name ASC
 ";
 

@@ -865,7 +865,7 @@ function TodayAttendance() {
                       <td colSpan={role === 'admin' ? 8 : 7} className="px-4 py-8 text-center text-slate-400">
                         {selectedDate === getLocalDateString() && attendanceData.students?.length > 0
                           ? 'No attendance recorded for today yet'
-                          : 'No students in this group'}
+                          : 'No attendance records found for this date'}
                       </td>
                     </tr>
                   ) : (

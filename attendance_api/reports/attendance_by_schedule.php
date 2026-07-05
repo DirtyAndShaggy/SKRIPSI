@@ -5,6 +5,7 @@ include("../config/database.php");
 $schedule_id = $_GET['schedule_id'] ?? null;
 $date = $_GET['date'] ?? date("Y-m-d");
 $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : date("Y-m-d");
+$dayName = date('l', strtotime($date));
 
 if (!$schedule_id) {
     echo json_encode(["status" => "error", "message" => "schedule_id required"]);
@@ -42,64 +43,51 @@ $schedule = mysqli_fetch_assoc($scheduleResult);
 $class_id = $schedule['class_id'];
 $group_id = $schedule['group_id'];
 
-// ─── Get students assigned to this schedule (via schedule_students) ───
-$studentQuery = "
+if ($schedule['day_of_week'] !== $dayName) {
+    echo json_encode([
+        "status" => "success",
+        "schedule" => $schedule,
+        "date" => $date,
+        "debug" => [
+            "group_id" => $group_id,
+            "student_count" => 0,
+            "attendance_count" => 0
+        ],
+        "summary" => [
+            "total_students" => 0,
+            "present" => 0,
+            "late" => 0,
+            "absent" => 0,
+            "attendance_rate" => 0
+        ],
+        "students" => []
+    ]);
+    mysqli_close($conn);
+    exit;
+}
+
+// ─── Get attendance records for this schedule and date only ───
+$attendanceQuery = "
 SELECT 
-    s.student_id,
+    a.student_id,
     s.nim,
     s.name,
     s.semester,
-    s.fingerprint_id
-FROM schedule_students ss
-JOIN students s ON ss.student_id = s.student_id
-WHERE ss.schedule_id = '$schedule_id'
+    s.fingerprint_id,
+    a.status,
+    a.timestamp,
+    a.device_id,
+    a.sync_status
+FROM attendance a
+JOIN students s ON a.student_id = s.student_id
+WHERE a.schedule_id = '$schedule_id'
+AND DATE(a.timestamp) = '$date'
 ORDER BY s.name ASC
 ";
 
-$studentResult = mysqli_query($conn, $studentQuery);
-
-// ─── If no students found via schedule_students, fallback to group ───
-if (mysqli_num_rows($studentResult) === 0 && $group_id) {
-    $studentQuery = "
-    SELECT 
-        s.student_id,
-        s.nim,
-        s.name,
-        s.semester,
-        s.fingerprint_id
-    FROM students s
-    WHERE s.group_id = '$group_id'
-    ORDER BY s.name ASC
-    ";
-    $studentResult = mysqli_query($conn, $studentQuery);
-}
-
-// ─── Get attendance records for this schedule and date ───
-$attendanceQuery = "
-SELECT student_id, status, timestamp 
-FROM attendance 
-WHERE schedule_id = '$schedule_id' 
-AND DATE(timestamp) = '$date'
-";
-
 $attendanceResult = mysqli_query($conn, $attendanceQuery);
-$attendanceMap = [];
-while ($row = mysqli_fetch_assoc($attendanceResult)) {
-    $attendanceMap[$row['student_id']] = [
-        'status' => $row['status'],
-        'timestamp' => $row['timestamp']
-    ];
-}
-
 $students = [];
-while ($row = mysqli_fetch_assoc($studentResult)) {
-    if (isset($attendanceMap[$row['student_id']])) {
-        $row['status'] = $attendanceMap[$row['student_id']]['status'];
-        $row['timestamp'] = $attendanceMap[$row['student_id']]['timestamp'];
-    } else {
-        $row['status'] = 'Absent';
-        $row['timestamp'] = null;
-    }
+while ($row = mysqli_fetch_assoc($attendanceResult)) {
     $students[] = $row;
 }
 
