@@ -7,7 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Students from './pages/Students';
 import Classes from './pages/Classes';
 import TodayAttendance from './pages/TodayAttendance';
-import Reports from './pages/Reports';
+import ExportPage from './pages/ExportPage';  // ✅ Already imported
 import Schedules from './pages/Schedules';
 import Users from './pages/Users';
 import Devices from './pages/Devices';
@@ -47,6 +47,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
+        
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <Layout>
@@ -54,6 +55,7 @@ function App() {
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="/students" element={
           <ProtectedRoute>
             <Layout>
@@ -61,6 +63,7 @@ function App() {
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="/classes" element={
           <ProtectedRoute>
             <Layout>
@@ -68,13 +71,15 @@ function App() {
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="/rooms" element={
           <ProtectedRoute allowedRole="admin">
-            <Layout user={user}>
+            <Layout>
               <Rooms />
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="/schedules" element={
           <ProtectedRoute allowedRole="admin">
             <Layout>
@@ -82,27 +87,40 @@ function App() {
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="/attendance" element={
           <ProtectedRoute>
-            <Layout user={user}>
+            <Layout>
               <TodayAttendance />
             </Layout>
           </ProtectedRoute>
         } />
-        <Route path="/reports" element={
+        
+        <Route path="/export" element={
           <ProtectedRoute>
             <Layout>
-              <Reports />
+              <ExportPage />
             </Layout>
           </ProtectedRoute>
         } />
+        
+        {/* Keep reports route if you want, or redirect to export */}
+        <Route path="/reports" element={
+          <ProtectedRoute>
+            <Layout>
+              <ExportPage /> {/* Redirect to new export page */}
+            </Layout>
+          </ProtectedRoute>
+        } />
+        
         <Route path="/users" element={
           <ProtectedRoute allowedRole="admin">
-            <Layout user={user}>
+            <Layout>
               <Users />
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="/devices" element={
           <ProtectedRoute allowedRole="admin">
             <Layout>
@@ -110,20 +128,23 @@ function App() {
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="/lecturers" element={
           <ProtectedRoute allowedRole="admin">
-            <Layout user={user}>
+            <Layout>
               <Lecturers />
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="/groups" element={
           <ProtectedRoute allowedRole="admin">
-            <Layout user={user}>
+            <Layout>
               <Groups />
             </Layout>
           </ProtectedRoute>
         } />
+        
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

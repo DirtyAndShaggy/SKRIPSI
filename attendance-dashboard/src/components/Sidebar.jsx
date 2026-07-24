@@ -28,7 +28,7 @@ function Sidebar() {
     { path: '/groups', icon: Layers, label: 'Groups', show: isAdmin },
     { path: '/schedules', icon: Calendar, label: 'Schedules', show: isAdmin },
     { path: '/attendance', icon: CheckSquare, label: "Today's Attendance", show: true },
-    { path: '/reports', icon: FileText, label: 'Reports', show: true },
+    { path: '/export', icon: FileText, label: 'Export Data', show: true },
     { path: '/users', icon: Users2, label: 'Users', show: isAdmin },
     { path: '/devices', icon: Fingerprint, label: 'Devices', show: isAdmin },
     { path: '/rooms', icon: Building, label: 'Rooms', show: isAdmin },

@@ -193,6 +193,19 @@ export const attendanceAPI = {
   // Get slot list from device (after sync)
   getDeviceSlots: (deviceId) => api.get(`/admin/fingerprint.php?action=get_slots&device_id=${deviceId}`),
 
+  // ─── EXPORT ───
+  exportAttendance: (params) => {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== null && params[key] !== undefined && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return api.get(`/reports/export_attendance.php?${queryParams.toString()}`, {
+      responseType: 'blob'
+    });
+  },
+
 };
 
 
