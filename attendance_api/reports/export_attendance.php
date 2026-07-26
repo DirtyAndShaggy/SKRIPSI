@@ -23,7 +23,7 @@ $schedule_id = $_GET['schedule_id'] ?? null;
 $class_id = $_GET['class_id'] ?? null;
 $cohort_id = $_GET['cohort_id'] ?? null;
 $group_id = $_GET['group_id'] ?? null;
-$group_ids = $_GET['group_ids'] ?? null; // comma-separated
+$group_ids = $_GET['group_ids'] ?? null;
 $semester = $_GET['semester'] ?? null;
 $date_from = $_GET['date_from'] ?? date('Y-m-d');
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
@@ -94,21 +94,28 @@ try {
     // ─── INFO SECTION ───
     $info = [
         ['Export Type', ucfirst($export_type)],
-        ['Generated', date('Y-m-d H:i:s')],
-        ['Date Range', "$date_from to $date_to"]
+        ['Generated', date('Y-m-d H:i:s')]
     ];
+    
+    // Add date range only for types that use it
+    if ($export_type !== 'semester') {
+        $info[] = ['Date Range', "$date_from to $date_to"];
+    } else {
+        $info[] = ['Semester', $semester];
+    }
     
     if ($export_type === 'schedule' && isset($data['schedule'])) {
         $info[] = ['Class', $data['schedule']['class_name'] ?? 'N/A'];
         $info[] = ['Class Code', $data['schedule']['class_code'] ?? 'N/A'];
         $info[] = ['Schedule', ($data['schedule']['day_of_week'] ?? '') . ' ' . ($data['schedule']['start_time'] ?? '') . ' - ' . ($data['schedule']['end_time'] ?? '')];
         $info[] = ['Group', $data['schedule']['group_name'] ?? 'N/A'];
-    } elseif (($export_type === 'groups') && isset($data['groups_info'])) {
+    } elseif ($export_type === 'groups' && isset($data['groups_info'])) {
         $info[] = ['Groups', implode(', ', array_column($data['groups_info'], 'group_name'))];
         $info[] = ['Total Groups', count($data['groups_info'])];
-    } elseif ($export_type === 'semester' && isset($data['class'])) {
-        $info[] = ['Class', ($data['class']['class_name'] ?? '') . ' (' . ($data['class']['class_code'] ?? '') . ')'];
-        $info[] = ['Lecturer', $data['class']['lecturer_name'] ?? 'N/A'];
+        $info[] = ['Total Students', count($data['students'] ?? [])];
+    } elseif ($export_type === 'semester' && isset($data['group'])) {
+        $info[] = ['Cohort', $data['cohort']['cohort_name'] ?? 'N/A'];
+        $info[] = ['Group', $data['group']['group_name'] ?? 'N/A'];
         $info[] = ['Semester', $semester];
         $info[] = ['Total Schedules', count($data['schedules'] ?? [])];
         $info[] = ['Total Students', count($data['students'] ?? [])];
@@ -128,8 +135,6 @@ try {
     // ─── DETERMINE HEADERS ───
     if ($export_type === 'semester') {
         $headers = ['#', 'NIM', 'Student Name', 'Semester', 'Group', 'Total Schedules', 'Present', 'Late', 'Absent', 'Attendance Rate'];
-    } elseif ($export_type === 'groups') {
-        $headers = ['#', 'NIM', 'Student Name', 'Semester', 'Group', 'Status', 'Date', 'Time', 'Device'];
     } else {
         $headers = ['#', 'NIM', 'Student Name', 'Semester', 'Group', 'Status', 'Date', 'Time', 'Device'];
     }
@@ -306,6 +311,21 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
                 return ['error' => 'schedule_id required for schedule export'];
             }
             
+            // Check permission for lecturer
+            if ($role === 'lecturer' && $lecturer_id) {
+                $checkQuery = "
+                    SELECT c.class_id 
+                    FROM classes c
+                    JOIN class_schedules cs ON c.class_id = cs.class_id
+                    WHERE cs.schedule_id = '$schedule_id' 
+                    AND c.lecturer_id = '$lecturer_id'
+                ";
+                $checkResult = mysqli_query($conn, $checkQuery);
+                if (!$checkResult || mysqli_num_rows($checkResult) === 0) {
+                    return ['error' => 'You do not have permission to export this schedule'];
+                }
+            }
+            
             // Get schedule info
             $query = "
                 SELECT 
@@ -349,7 +369,7 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
                         ELSE 'Absent'
                     END AS final_status
                 FROM students s
-                LEFT JOIN schedule_students ss ON s.student_id = ss.student_id
+                JOIN schedule_students ss ON s.student_id = ss.student_id
                 LEFT JOIN `groups` g ON s.group_id = g.group_id
                 LEFT JOIN attendance a ON s.student_id = a.student_id 
                     AND a.schedule_id = '$schedule_id'
@@ -368,6 +388,38 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
                 return ['error' => 'group_id or group_ids required for groups export'];
             }
             
+            // Check permission for lecturer
+            if ($role === 'lecturer' && $lecturer_id) {
+                // Get all class_ids for this lecturer
+                $classQuery = "SELECT class_id FROM classes WHERE lecturer_id = '$lecturer_id'";
+                $classResult = mysqli_query($conn, $classQuery);
+                $classIds = [];
+                while ($row = mysqli_fetch_assoc($classResult)) {
+                    $classIds[] = $row['class_id'];
+                }
+                if (empty($classIds)) {
+                    return ['error' => 'You do not have any classes assigned'];
+                }
+                $classIdList = implode(',', $classIds);
+                
+                // Check if these groups are in the lecturer's classes
+                $checkQuery = "
+                    SELECT DISTINCT group_id 
+                    FROM class_schedules 
+                    WHERE group_id IN (" . implode(',', $groupIdsArray) . ")
+                    AND class_id IN ($classIdList)
+                ";
+                $checkResult = mysqli_query($conn, $checkQuery);
+                $allowedGroupIds = [];
+                while ($row = mysqli_fetch_assoc($checkResult)) {
+                    $allowedGroupIds[] = $row['group_id'];
+                }
+                if (empty($allowedGroupIds)) {
+                    return ['error' => 'You do not have permission to export these groups'];
+                }
+                $groupIdsArray = $allowedGroupIds;
+            }
+            
             // Get group info
             $groupIdsList = implode(',', $groupIdsArray);
             $query = "SELECT group_id, group_name, group_code FROM `groups` WHERE group_id IN ($groupIdsList)";
@@ -378,7 +430,8 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
             }
             $data['groups_info'] = $groupsInfo;
             
-            // Get students and attendance for all groups
+            // ─── GET ALL STUDENTS IN THESE GROUPS ───
+            // Shows ALL students in the group, even if not enrolled in any schedule
             $query = "
                 SELECT 
                     s.student_id,
@@ -412,10 +465,35 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
             if (empty($groupIdsArray) || !$semester) {
                 return ['error' => 'group_id and semester required for semester export'];
             }
-            $group_id = $groupIdsArray[0];
+            $groupId = $groupIdsArray[0];
+
+            // ─── CORRECT PERMISSION CHECK ───
+            // Check if this lecturer teaches the class that this group is enrolled in
+            if ($role === 'lecturer' && $lecturer_id) {
+                // Find which class this group is enrolled in for the given semester
+                $groupClassQuery = "
+                    SELECT DISTINCT c.class_id, c.lecturer_id
+                    FROM class_schedules cs
+                    JOIN classes c ON cs.class_id = c.class_id
+                    WHERE cs.group_id = '$groupId' 
+                    AND cs.semester = '$semester'
+                    LIMIT 1
+                ";
+                $groupClassResult = mysqli_query($conn, $groupClassQuery);
+                
+                if ($groupClassResult && $row = mysqli_fetch_assoc($groupClassResult)) {
+                    // Check if the lecturer is assigned to this class
+                    if ($row['lecturer_id'] != $lecturer_id) {
+                        return ['error' => 'You do not have permission to export this group for this semester'];
+                    }
+                } else {
+                    // No class found for this group in this semester
+                    return ['error' => 'No class found for this group in the selected semester'];
+                }
+            }
 
             // Get group info
-            $groupQuery = "SELECT group_id, group_name, group_code, cohort_id FROM `groups` WHERE group_id = '$group_id'";
+            $groupQuery = "SELECT group_id, group_name, group_code, cohort_id FROM `groups` WHERE group_id = '$groupId'";
             $groupResult = mysqli_query($conn, $groupQuery);
             if ($groupResult && $row = mysqli_fetch_assoc($groupResult)) {
                 $data['group'] = $row;
@@ -423,7 +501,7 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
                 return ['error' => 'Group not found'];
             }
             
-            // Get cohort info (optional)
+            // Get cohort info
             if (isset($data['group']['cohort_id'])) {
                 $cohortQuery = "SELECT cohort_id, cohort_name FROM cohorts WHERE cohort_id = '{$data['group']['cohort_id']}'";
                 $cohortResult = mysqli_query($conn, $cohortQuery);
@@ -438,7 +516,7 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
                        c.class_code, c.class_name
                 FROM class_schedules cs
                 JOIN classes c ON cs.class_id = c.class_id
-                WHERE cs.group_id = '$group_id' AND cs.semester = '$semester'
+                WHERE cs.group_id = '$groupId' AND cs.semester = '$semester'
                 ORDER BY cs.day_of_week, cs.start_time
             ";
             $scheduleResult = mysqli_query($conn, $scheduleQuery);
@@ -455,7 +533,8 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
             }
             $scheduleIdList = implode(',', $scheduleIds);
             
-            // Get all students in this group
+            // ─── GET ALL STUDENTS IN THE GROUP ───
+            // For semester export, show ALL students in the group
             $studentQuery = "
                 SELECT 
                     s.student_id,
@@ -466,7 +545,7 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
                     g.group_code
                 FROM students s
                 JOIN `groups` g ON s.group_id = g.group_id
-                WHERE s.group_id = '$group_id'
+                WHERE s.group_id = '$groupId'
                 ORDER BY s.name ASC
             ";
             $studentResult = mysqli_query($conn, $studentQuery);
@@ -494,99 +573,28 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
                 $data['students'][] = $studentRow;
             }
             break;
-
-            // Check permission for lecturer
-            if ($role === 'lecturer' && $lecturer_id) {
-                $checkQuery = "SELECT class_id FROM classes WHERE class_id = '$class_id' AND lecturer_id = '$lecturer_id'";
-                $checkResult = mysqli_query($conn, $checkQuery);
-                if (!$checkResult || mysqli_num_rows($checkResult) === 0) {
-                    return ['error' => 'You do not have permission to export this class'];
-                }
-            }
-            
-            // Get class info
-            $query = "
-                SELECT 
-                    c.class_id,
-                    c.class_code,
-                    c.class_name,
-                    l.full_name AS lecturer_name
-                FROM classes c
-                LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
-                WHERE c.class_id = '$class_id'
-            ";
-            $result = mysqli_query($conn, $query);
-            if ($result && $row = mysqli_fetch_assoc($result)) {
-                $data['class'] = $row;
-            } else {
-                return ['error' => 'Class not found'];
-            }
-            
-            // Get schedules for this semester
-            $query = "
-                SELECT schedule_id, day_of_week, start_time, end_time
-                FROM class_schedules
-                WHERE class_id = '$class_id' AND semester = '$semester'
-                ORDER BY day_of_week, start_time
-            ";
-            $result = mysqli_query($conn, $query);
-            $schedules = [];
-            $scheduleIds = [];
-            while ($row = mysqli_fetch_assoc($result)) {
-                $schedules[] = $row;
-                $scheduleIds[] = $row['schedule_id'];
-            }
-            $data['schedules'] = $schedules;
-            
-            if (empty($scheduleIds)) {
-                return ['error' => 'No schedules found for this class and semester'];
-            }
-            $scheduleIdList = implode(',', $scheduleIds);
-            
-            // Get students with attendance summary
-            $query = "
-                SELECT DISTINCT
-                    s.student_id,
-                    s.nim,
-                    s.name AS student_name,
-                    s.semester AS student_semester,
-                    g.group_name,
-                    g.group_code
-                FROM students s
-                LEFT JOIN `groups` g ON s.group_id = g.group_id
-                LEFT JOIN schedule_students ss ON s.student_id = ss.student_id
-                LEFT JOIN class_schedules cs ON ss.schedule_id = cs.schedule_id
-                WHERE cs.class_id = '$class_id' AND cs.semester = '$semester'
-                ORDER BY s.name ASC
-            ";
-            $result = mysqli_query($conn, $query);
-            while ($row = mysqli_fetch_assoc($result)) {
-                $student_id = $row['student_id'];
-                
-                // Get attendance records
-                $attQuery = "
-                    SELECT 
-                        DATE(timestamp) AS attendance_date,
-                        status,
-                        TIME(timestamp) AS attendance_time
-                    FROM attendance
-                    WHERE student_id = '$student_id' 
-                    AND schedule_id IN ($scheduleIdList)
-                ";
-                $attResult = mysqli_query($conn, $attQuery);
-                $attendance_records = [];
-                while ($attRow = mysqli_fetch_assoc($attResult)) {
-                    $attendance_records[] = $attRow;
-                }
-                
-                $row['attendance_records'] = $attendance_records;
-                $data['students'][] = $row;
-            }
-            break;
             
         case 'cohort':
             if (!$cohort_id) {
                 return ['error' => 'cohort_id required for cohort export'];
+            }
+            
+            // Check permission for lecturer
+            if ($role === 'lecturer' && $lecturer_id) {
+                // Check if this cohort has any groups in the lecturer's classes
+                $checkQuery = "
+                    SELECT DISTINCT g.cohort_id
+                    FROM `groups` g
+                    JOIN class_schedules cs ON g.group_id = cs.group_id
+                    JOIN classes c ON cs.class_id = c.class_id
+                    WHERE g.cohort_id = '$cohort_id'
+                    AND c.lecturer_id = '$lecturer_id'
+                    LIMIT 1
+                ";
+                $checkResult = mysqli_query($conn, $checkQuery);
+                if (!$checkResult || mysqli_num_rows($checkResult) === 0) {
+                    return ['error' => 'You do not have permission to export this cohort'];
+                }
             }
             
             // Get cohort info

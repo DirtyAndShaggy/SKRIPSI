@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Fingerprint, Plus, Edit2, Trash2, X, Loader2, RefreshCw, 
-  GraduationCap, Layers, Users, Search, Filter
+  GraduationCap, Layers, Users, Search, Filter, Eye, BookOpen
 } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
 function Students() {
+  const [user, setUser] = useState(null);
+  const isAdmin = user?.role === 'admin';
+  
   const [students, setStudents] = useState([]);
   const [cohorts, setCohorts] = useState([]);
   const [allGroups, setAllGroups] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -24,7 +28,10 @@ function Students() {
   const [groupFilter, setGroupFilter] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [classFilter, setClassFilter] = useState('');
   const [filteredGroups, setFilteredGroups] = useState([]);
+  const [lecturerClassIds, setLecturerClassIds] = useState(new Set());
+  const [lecturerClassIdList, setLecturerClassIdList] = useState([]);
   
   const [formData, setFormData] = useState({
     nim: '',
@@ -42,6 +49,15 @@ function Students() {
   const semesterOptions = [1, 2, 3, 4, 5, 6, 7, 8];
   const academicYearOptions = ['2023/2024', '2024/2025', '2025/2026', '2026/2027'];
 
+  // ─── GET USER ON MOUNT ───
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      const parsed = JSON.parse(userData);
+      setUser(parsed);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
     intervalRef.current = setInterval(() => loadData(false), 30000);
@@ -50,20 +66,128 @@ function Students() {
     };
   }, []);
 
+  // ─── FILTER GROUPS WHEN COHORT CHANGES ───
+  useEffect(() => {
+    if (formData.cohort_id) {
+      const filtered = allGroups.filter(g => String(g.cohort_id) === String(formData.cohort_id));
+      setFilteredGroups(filtered);
+      // If the currently selected group is not in the filtered list, clear it
+      if (formData.group_id && !filtered.some(g => String(g.group_id) === String(formData.group_id))) {
+        setFormData(prev => ({ ...prev, group_id: '' }));
+      }
+    } else {
+      setFilteredGroups([]);
+    }
+  }, [formData.cohort_id, allGroups]);
+
+  // ─── LOAD DATA ───
   const loadData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     else setRefreshing(true);
     
     try {
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const isAdminUser = userData?.role === 'admin';
+      
+      // ─── 1. LOAD STUDENTS ───
+      let studentsData = [];
       const studentsResponse = await attendanceAPI.getStudents();
       if (studentsResponse.data.status === 'success') {
-        setStudents(studentsResponse.data.students);
+        studentsData = studentsResponse.data.students || [];
       }
 
+      // ─── 2. LOAD CLASSES (for lecturer filtering) ───
+      let classIds = new Set();
+      let lecturerClasses = [];
+      let classIdArray = [];
+      
+      if (!isAdminUser) {
+        try {
+          const lecturerClassesRes = await attendanceAPI.getLecturerClasses();
+          if (lecturerClassesRes.data.status === 'success') {
+            lecturerClasses = lecturerClassesRes.data.classes || [];
+            lecturerClasses.forEach(c => {
+              const id = String(c.class_id);
+              classIds.add(id);
+              classIdArray.push(id);
+            });
+            setClasses(lecturerClasses);
+            setLecturerClassIds(classIds);
+            setLecturerClassIdList(classIdArray);
+          }
+        } catch (err) {
+          console.error('Failed to load lecturer classes:', err);
+        }
+      } else {
+        const classesRes = await attendanceAPI.getClasses();
+        if (classesRes.data.status === 'success') {
+          setClasses(classesRes.data.classes || []);
+        }
+      }
+
+      // ─── 3. FILTER STUDENTS FOR LECTURER ───
+      let filteredStudents = studentsData;
+      
+      if (!isAdminUser && classIds.size > 0) {
+        const studentIds = new Set();
+        
+        for (const classId of classIds) {
+          try {
+            const schedulesRes = await attendanceAPI.getSchedules(classId);
+            if (schedulesRes.data.status === 'success') {
+              const schedules = schedulesRes.data.schedules || [];
+              for (const schedule of schedules) {
+                const studentsRes = await attendanceAPI.getScheduleStudents(schedule.schedule_id);
+                if (studentsRes.data.status === 'success') {
+                  const assignedStudents = studentsRes.data.students || [];
+                  assignedStudents.forEach(s => {
+                    if (s.is_assigned) {
+                      studentIds.add(String(s.student_id));
+                    }
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Failed to load schedules for class:', classId, err);
+          }
+        }
+        
+        filteredStudents = studentsData.filter(s => studentIds.has(String(s.student_id)));
+      }
+
+      setStudents(filteredStudents);
+
+      // ─── 4. LOAD GROUPS & COHORTS ───
       const groupsResponse = await attendanceAPI.getGroups();
       if (groupsResponse.data.status === 'success') {
-        setCohorts(groupsResponse.data.cohorts);
-        const flattened = groupsResponse.data.cohorts.flatMap(c =>
+        let cohortsData = groupsResponse.data.cohorts || [];
+        
+        if (!isAdminUser && classIds.size > 0) {
+          const lecturerGroupIds = new Set();
+          for (const classId of classIds) {
+            try {
+              const schedulesRes = await attendanceAPI.getSchedules(classId);
+              if (schedulesRes.data.status === 'success') {
+                (schedulesRes.data.schedules || []).forEach(s => {
+                  if (s.group_id) lecturerGroupIds.add(String(s.group_id));
+                });
+              }
+            } catch (err) {
+              console.error('Failed to load schedules for class:', classId, err);
+            }
+          }
+          
+          cohortsData = cohortsData.map(cohort => {
+            const filteredGroups = (cohort.groups || []).filter(g => 
+              lecturerGroupIds.has(String(g.group_id))
+            );
+            return { ...cohort, groups: filteredGroups };
+          }).filter(cohort => cohort.groups.length > 0);
+        }
+        
+        setCohorts(cohortsData);
+        const flattened = cohortsData.flatMap(c =>
           (c.groups || []).map(g => ({ ...g, cohort_id: String(c.cohort_id) }))
         );
         setAllGroups(flattened);
@@ -79,16 +203,6 @@ function Students() {
     }
   };
 
-  // Filter groups when cohort changes in form
-  useEffect(() => {
-    if (formData.cohort_id) {
-      const filtered = allGroups.filter(g => String(g.cohort_id) === String(formData.cohort_id));
-      setFilteredGroups(filtered);
-    } else {
-      setFilteredGroups([]);
-    }
-  }, [formData.cohort_id, allGroups]);
-
   const handleRefresh = () => loadData(false);
 
   const clearFilters = () => {
@@ -97,13 +211,18 @@ function Students() {
     setGroupFilter('');
     setSemesterFilter('');
     setStatusFilter('all');
+    setClassFilter('');
   };
 
-  const activeFilterCount = [searchTerm, cohortFilter, groupFilter, semesterFilter, statusFilter !== 'all'].filter(Boolean).length;
+  const activeFilterCount = [searchTerm, cohortFilter, groupFilter, semesterFilter, statusFilter !== 'all', classFilter].filter(Boolean).length;
 
+  // ─── HANDLE SUBMIT ───
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+    if (!isAdmin) {
+      alert('You do not have permission to add or edit students.');
+      return;
+    }
     try {
       const data = {
         nim: formData.nim,
@@ -135,6 +254,10 @@ function Students() {
   };
 
   const handleDelete = async (studentId) => {
+    if (!isAdmin) {
+      alert('You do not have permission to delete students.');
+      return;
+    }
     if (!confirm('Are you sure you want to delete this student?')) return;
     
     try {
@@ -147,19 +270,36 @@ function Students() {
     }
   };
 
+  // ─── HANDLE EDIT - FIXED ───
   const handleEdit = (student) => {
+    if (!isAdmin) {
+      alert('You do not have permission to edit students.');
+      return;
+    }
     try {
-      setEditingStudent(student);
-      setFormData({
-        nim: student.nim,
-        name: student.name,
+      // Set form data first
+      const newFormData = {
+        nim: student.nim || '',
+        name: student.name || '',
         email: student.email || '',
         semester: student.semester || '',
         academic_year: student.academic_year || '',
         fingerprint_id: student.fingerprint_id || '',
         cohort_id: student.cohort_id || '',
         group_id: student.group_id || ''
-      });
+      };
+      
+      setFormData(newFormData);
+      
+      // If cohort_id is set, filter groups for that cohort
+      if (student.cohort_id) {
+        const filtered = allGroups.filter(g => String(g.cohort_id) === String(student.cohort_id));
+        setFilteredGroups(filtered);
+      } else {
+        setFilteredGroups([]);
+      }
+      
+      setEditingStudent(student);
       setShowForm(true);
     } catch (err) {
       console.error('handleEdit failed', err);
@@ -167,7 +307,12 @@ function Students() {
     }
   };
 
+  // ─── HANDLE ENROLL ───
   const handleEnroll = async (studentId) => {
+    if (!isAdmin) {
+      alert('You do not have permission to enroll students in fingerprint.');
+      return;
+    }
     if (!confirm('This will request fingerprint enrollment for this student. Make sure they are ready to scan on the ESP32 device.')) return;
     
     setEnrollingStudentId(studentId);
@@ -220,30 +365,23 @@ function Students() {
     setShowForm(false);
     setEditingStudent(null);
     setFormData({ nim: '', name: '', email: '', semester: '', academic_year: '', fingerprint_id: '', cohort_id: '', group_id: '' });
+    setFilteredGroups([]);
   };
 
-  const getStatusDisplay = (student) => {
-    const status = enrollmentStatus[student.student_id];
-    
-    if (status?.status === 'pending') {
-      return <span className="text-yellow-600 text-xs flex items-center gap-1">
-        <Loader2 className="w-3 h-3 animate-spin" />
-        Requesting...
-      </span>;
+  // ─── HANDLE COHORT CHANGE IN FORM ───
+  const handleCohortChange = (cohortId) => {
+    setFormData(prev => ({ ...prev, cohort_id: cohortId, group_id: '' }));
+    if (cohortId) {
+      const filtered = allGroups.filter(g => String(g.cohort_id) === String(cohortId));
+      setFilteredGroups(filtered);
+    } else {
+      setFilteredGroups([]);
     }
-    if (status?.status === 'requested') {
-      return <span className="text-blue-600 text-xs">⏳ Waiting for scan</span>;
-    }
-    if (status?.status === 'error') {
-      return <span className="text-red-600 text-xs">❌ {status.message}</span>;
-    }
-    return null;
   };
 
   // ─── FILTER STUDENTS ───
   const filteredStudents = students
     .filter(student => {
-      // Search filter
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         const matches = 
@@ -253,19 +391,12 @@ function Students() {
         if (!matches) return false;
       }
       
-      // Cohort filter
       if (cohortFilter && student.cohort_id != cohortFilter) return false;
-      
-      // Group filter
       if (groupFilter && student.group_id != groupFilter) return false;
-      
-      // Semester filter
       if (semesterFilter && student.semester != semesterFilter) return false;
       
-      // Status filter
       if (statusFilter === 'active') return Boolean(student.fingerprint_id);
       if (statusFilter === 'inactive') return !student.fingerprint_id;
-      if (statusFilter === 'all') return true;
       
       return true;
     })
@@ -287,6 +418,10 @@ function Students() {
     return String(g.cohort_id) === String(cohortFilter);
   });
 
+  // ─── CLASS FILTER FOR LECTURER ───
+  const classOptions = classes.map(c => ({ ...c, class_id: String(c.class_id) }));
+
+  // ─── RENDER ───
   if (loading) {
     return <div className="text-center py-10 text-gray-500">Loading students...</div>;
   }
@@ -296,10 +431,20 @@ function Students() {
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="text-xl font-bold">Student Management</h2>
-          <p className="text-sm text-slate-500">Manage students, assign cohorts, groups, and fingerprint IDs</p>
+          <p className="text-sm text-slate-500">
+            {isAdmin 
+              ? 'Manage students, assign cohorts, groups, and fingerprint IDs'
+              : 'View students enrolled in your classes'
+            }
+          </p>
+          {!isAdmin && (
+            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded mt-1">
+              <Eye className="w-3 h-3" />
+              View Only Mode
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {/* ─── FILTER TOGGLE BUTTON ─── */}
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${
@@ -322,17 +467,20 @@ function Students() {
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
-          <button
-            onClick={() => {
-              setEditingStudent(null);
-              setFormData({ nim: '', name: '', email: '', semester: '', academic_year: '', fingerprint_id: '', cohort_id: '', group_id: '' });
-              setShowForm(!showForm);
-            }}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            {showForm ? 'Cancel' : 'Add Student'}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => {
+                setEditingStudent(null);
+                setFormData({ nim: '', name: '', email: '', semester: '', academic_year: '', fingerprint_id: '', cohort_id: '', group_id: '' });
+                setFilteredGroups([]);
+                setShowForm(!showForm);
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              {showForm ? 'Cancel' : 'Add Student'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -344,13 +492,18 @@ function Students() {
         </span>
         <span className="text-slate-300">|</span>
         <span>{filteredStudents.length} students</span>
+        {!isAdmin && lecturerClassIdList.length > 0 && (
+          <>
+            <span className="text-slate-300">|</span>
+            <span className="text-blue-500">{classes.length} classes</span>
+          </>
+        )}
       </div>
 
-      {/* ─── FILTERS SECTION ─── (Togglable) */}
+      {/* ─── FILTERS SECTION ─── */}
       {showFilters && (
         <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
               <input
@@ -362,13 +515,12 @@ function Students() {
               />
             </div>
             
-            {/* Cohort Filter */}
             <div>
               <select
                 value={cohortFilter}
                 onChange={(e) => {
                   setCohortFilter(e.target.value);
-                  setGroupFilter(''); // Reset group when cohort changes
+                  setGroupFilter('');
                 }}
                 className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -381,7 +533,6 @@ function Students() {
               </select>
             </div>
             
-            {/* Group Filter */}
             <div>
               <select
                 value={groupFilter}
@@ -398,7 +549,6 @@ function Students() {
               </select>
             </div>
             
-            {/* Semester Filter */}
             <div>
               <select
                 value={semesterFilter}
@@ -412,7 +562,6 @@ function Students() {
               </select>
             </div>
 
-            {/* Status Filter */}
             <div>
               <select
                 value={statusFilter}
@@ -426,7 +575,28 @@ function Students() {
             </div>
           </div>
           
-          {/* Clear Filters */}
+          {!isAdmin && classes.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Filter by Class</label>
+                  <select
+                    value={classFilter}
+                    onChange={(e) => setClassFilter(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All My Classes</option>
+                    {classOptions.map(cls => (
+                      <option key={cls.class_id} value={cls.class_id}>
+                        {cls.class_code} - {cls.class_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="flex justify-end mt-3">
             <button
               onClick={clearFilters}
@@ -436,7 +606,6 @@ function Students() {
             </button>
           </div>
 
-          {/* Active filters display */}
           {activeFilterCount > 0 && (
             <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
               <span className="text-xs text-gray-500">Active filters:</span>
@@ -470,13 +639,19 @@ function Students() {
                   <button onClick={() => setStatusFilter('all')} className="hover:text-blue-900">×</button>
                 </span>
               )}
+              {classFilter && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Class: {classes.find(c => String(c.class_id) === classFilter)?.class_code || classFilter}
+                  <button onClick={() => setClassFilter('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Add/Edit Student Form */}
-      {showForm && (
+      {/* ─── ADD/EDIT STUDENT FORM (ADMIN ONLY) ─── */}
+      {isAdmin && showForm && (
         <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200">
           <h3 className="font-medium text-slate-700 mb-3">
             {editingStudent ? 'Edit Student' : 'Add New Student'}
@@ -532,11 +707,11 @@ function Students() {
               onChange={(e) => setFormData({...formData, fingerprint_id: e.target.value})}
               className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            
+            {/* ─── COHORT SELECTION ─── */}
             <select
               value={formData.cohort_id}
-              onChange={(e) => {
-                setFormData({...formData, cohort_id: e.target.value, group_id: ''});
-              }}
+              onChange={(e) => handleCohortChange(e.target.value)}
               className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Select Cohort</option>
@@ -546,6 +721,8 @@ function Students() {
                 </option>
               ))}
             </select>
+
+            {/* ─── GROUP SELECTION ─── */}
             <select
               value={formData.group_id}
               onChange={(e) => setFormData({...formData, group_id: e.target.value})}
@@ -559,6 +736,7 @@ function Students() {
                 </option>
               ))}
             </select>
+
             <div className="md:col-span-3 flex gap-2">
               <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
                 {editingStudent ? 'Update Student' : 'Add Student'}
@@ -571,7 +749,7 @@ function Students() {
         </div>
       )}
 
-      {/* Students Table */}
+      {/* ─── STUDENTS TABLE ─── */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -592,7 +770,7 @@ function Students() {
               {filteredStudents.length === 0 ? (
                 <tr>
                   <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
-                    No students found. Add your first student!
+                    {isAdmin ? 'No students found. Add your first student!' : 'No students enrolled in your classes.'}
                   </td>
                 </tr>
               ) : (
@@ -642,45 +820,54 @@ function Students() {
                     </td>
                     <td className="px-4 py-3 text-sm text-right">
                       <div className="inline-flex flex-wrap gap-1 justify-end">
-                        {!student.fingerprint_id ? (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleEnroll(student.student_id); }}
-                            disabled={enrollingStudentId === student.student_id}
-                            className="text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded transition-colors flex items-center gap-1 text-xs disabled:opacity-50"
-                          >
-                            {enrollingStudentId === student.student_id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        {isAdmin ? (
+                          <>
+                            {!student.fingerprint_id ? (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleEnroll(student.student_id); }}
+                                disabled={enrollingStudentId === student.student_id}
+                                className="text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded transition-colors flex items-center gap-1 text-xs disabled:opacity-50"
+                              >
+                                {enrollingStudentId === student.student_id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Fingerprint className="w-3.5 h-3.5" />
+                                )}
+                                Enroll
+                              </button>
                             ) : (
-                              <Fingerprint className="w-3.5 h-3.5" />
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleEnroll(student.student_id); }}
+                                disabled={enrollingStudentId === student.student_id}
+                                className="text-yellow-600 hover:text-yellow-800 px-2 py-1 hover:bg-yellow-50 rounded transition-colors flex items-center gap-1 text-xs disabled:opacity-50"
+                              >
+                                <Fingerprint className="w-3.5 h-3.5" />
+                                Re-enroll
+                              </button>
                             )}
-                            Enroll
-                          </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleEdit(student); }}
+                              className="text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleDelete(student.student_id); }}
+                              className="text-red-600 hover:text-red-800 px-2 py-1 hover:bg-red-50 rounded transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleEnroll(student.student_id); }}
-                            disabled={enrollingStudentId === student.student_id}
-                            className="text-yellow-600 hover:text-yellow-800 px-2 py-1 hover:bg-yellow-50 rounded transition-colors flex items-center gap-1 text-xs disabled:opacity-50"
-                          >
-                            <Fingerprint className="w-3.5 h-3.5" />
-                            Re-enroll
-                          </button>
+                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                            <Eye className="w-3 h-3" />
+                            View Only
+                          </span>
                         )}
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleEdit(student); }}
-                          className="text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(student.student_id); }}
-                          className="text-red-600 hover:text-red-800 px-2 py-1 hover:bg-red-50 rounded transition-colors"
-                        >
-                          Delete
-                        </button>
                       </div>
                     </td>
                   </tr>
@@ -692,11 +879,21 @@ function Students() {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
-        <span>💡 <strong>Enroll:</strong> Request fingerprint enrollment on ESP32</span>
-        <span>🔄 <strong>Re-enroll:</strong> Replace existing fingerprint</span>
-        <span>🎓 <strong>Cohort:</strong> Student's academic year group (e.g., 2020/2021)</span>
-        <span>📚 <strong>Group:</strong> Student's section within their cohort (e.g., A, B, C)</span>
-        <span>📅 <strong>Semester:</strong> Current semester the student is in</span>
+        {isAdmin ? (
+          <>
+            <span>💡 <strong>Enroll:</strong> Request fingerprint enrollment on ESP32</span>
+            <span>🔄 <strong>Re-enroll:</strong> Replace existing fingerprint</span>
+            <span>🎓 <strong>Cohort:</strong> Student's academic year group (e.g., 2020/2021)</span>
+            <span>📚 <strong>Group:</strong> Student's section within their cohort (e.g., A, B, C)</span>
+            <span>📅 <strong>Semester:</strong> Current semester the student is in</span>
+          </>
+        ) : (
+          <>
+            <span>👁️ <strong>View Only:</strong> You can view students enrolled in your classes</span>
+            <span>📚 <strong>Classes:</strong> Students are filtered by the classes you teach</span>
+            <span>🔽 <strong>Filters:</strong> Use filters to narrow down student list</span>
+          </>
+        )}
         <span>🔽 <strong>Filters:</strong> Click the Filters button to show/hide filter options</span>
       </div>
     </div>
