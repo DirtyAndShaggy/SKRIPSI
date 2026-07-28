@@ -39,7 +39,7 @@ function TodayAttendance() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [viewMode, setViewMode] = useState('summary'); // 'summary', 'logs', 'debug'
+  const [viewMode, setViewMode] = useState('summary');
   
   const intervalRef = useRef(null);
 
@@ -134,19 +134,16 @@ function TodayAttendance() {
   // ─── LOAD ADMIN DATA ───
   const loadAdminData = async () => {
     try {
-      // Reset admin filters for a full system view
       setSelectedClass(null);
       setSelectedScheduleId(null);
       setSelectedGroup(null);
       setSelectedSemester('');
       setSearchTerm('');
 
-      // Load all classes
       const classesResponse = await attendanceAPI.getClasses();
       if (classesResponse.data.status === 'success') {
         setClasses(classesResponse.data.classes);
       }
-      // Load all groups
       const groupsResponse = await attendanceAPI.getGroups();
       if (groupsResponse.data.status === 'success') {
         const allGroups = groupsResponse.data.cohorts.flatMap(c => c.groups || []);
@@ -154,7 +151,6 @@ function TodayAttendance() {
         setCohorts(groupsResponse.data.cohorts || []);
       }
 
-      // Load all schedules
       const schedulesResponse = await attendanceAPI.getAllSchedules();
       if (schedulesResponse.data.status === 'success') {
         const availableSchedules = schedulesResponse.data.schedules;
@@ -164,7 +160,6 @@ function TodayAttendance() {
 
       await loadAllAttendance(selectedDate);
 
-      // Load all attendance logs (for admin)
       const logsResponse = await attendanceAPI.getAttendanceLogs();
       if (logsResponse.data.status === 'success') {
         setAttendanceLogs(logsResponse.data.logs || []);
@@ -175,23 +170,34 @@ function TodayAttendance() {
     }
   };
 
-  // ─── LOAD LECTURER DATA ───
+  // ─── LOAD LECTURER DATA (FIXED) ───
   const loadLecturerData = async () => {
     try {
       const response = await attendanceAPI.getLecturerClasses();
+      console.log('Lecturer classes response:', response.data); // DEBUG
+
       if (response.data.status === 'success') {
-        setClasses(response.data.classes);
-        if (response.data.classes.length > 0) {
-          setSelectedClass(response.data.classes[0]);
-          await loadSchedulesForClass(response.data.classes[0].class_id);
+        const lecturerClasses = response.data.classes || [];
+        setClasses(lecturerClasses);
+        
+        if (lecturerClasses.length > 0) {
+          setSelectedClass(lecturerClasses[0]);
+          await loadSchedulesForClass(lecturerClasses[0].class_id);
+        } else {
+          setError('You are not assigned to any classes. Please contact administrator.');
+          setAttendanceData(null);
+          setLoading(false);
         }
+      } else {
+        setError(response.data.message || 'Failed to load your classes');
       }
     } catch (err) {
       console.error('Failed to load lecturer data:', err);
-      throw err;
+      setError('Failed to load data. Please try again.');
     }
   };
 
+  // ─── LOAD ALL ATTENDANCE ───
   const loadAllAttendance = async (date) => {
     const normalizedDate = date || getLocalDateString();
     setLoading(true);
@@ -213,12 +219,16 @@ function TodayAttendance() {
     }
   };
 
+  // ─── LOAD SCHEDULES FOR CLASS (FIXED) ───
   const loadSchedulesForClass = async (classId) => {
     try {
       const response = await attendanceAPI.getSchedules(classId);
+      console.log('Schedules response:', response.data); // DEBUG
+
       if (response.data.status === 'success') {
-        const availableSchedules = response.data.schedules;
+        const availableSchedules = response.data.schedules || [];
         setSchedules(availableSchedules);
+        
         if (availableSchedules.length > 0) {
           const preferredSchedule = pickBestScheduleForDate(availableSchedules, selectedDate);
           const scheduleToLoad = preferredSchedule?.schedule_id || availableSchedules[0].schedule_id;
@@ -228,6 +238,8 @@ function TodayAttendance() {
           setError('No schedules found for this class');
           setAttendanceData(null);
         }
+      } else {
+        setError(response.data.message || 'Failed to load schedules');
       }
     } catch (err) {
       console.error('Failed to load schedules:', err);
@@ -235,25 +247,36 @@ function TodayAttendance() {
     }
   };
 
+  // ─── LOAD ATTENDANCE (FIXED) ───
   const loadAttendance = async (showLoading = true, scheduleId = null) => {
     const targetScheduleId = scheduleId || selectedScheduleId;
-    if (!targetScheduleId) return;
+    if (!targetScheduleId) {
+      setError('No schedule selected');
+      setAttendanceData(null);
+      if (showLoading) setLoading(false);
+      else setRefreshing(false);
+      return;
+    }
     
     if (showLoading) setLoading(true);
     else setRefreshing(true);
     
     try {
       const response = await attendanceAPI.getAttendanceBySchedule(targetScheduleId, selectedDate || getLocalDateString());
+      console.log('Attendance response:', response.data); // DEBUG
+      
       if (response.data.status === 'success') {
         setAttendanceData(response.data);
         setLastUpdated(new Date());
         setError('');
       } else {
         setError(response.data.message || 'Failed to load attendance');
+        setAttendanceData(null);
       }
     } catch (err) {
       console.error('Failed to load attendance:', err);
       setError('Connection error. Please try again.');
+      setAttendanceData(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -376,36 +399,23 @@ function TodayAttendance() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* View Mode Toggle (Admin only) */}
           {role === 'admin' && (
             <div className="flex border rounded-lg overflow-hidden">
               <button
                 onClick={() => setViewMode('summary')}
-                className={`px-3 py-1.5 text-xs ${
-                  viewMode === 'summary' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-white text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`px-3 py-1.5 text-xs ${viewMode === 'summary' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
               >
                 Summary
               </button>
               <button
                 onClick={() => setViewMode('logs')}
-                className={`px-3 py-1.5 text-xs ${
-                  viewMode === 'logs' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-white text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`px-3 py-1.5 text-xs ${viewMode === 'logs' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
               >
                 Logs
               </button>
               <button
                 onClick={() => setViewMode('debug')}
-                className={`px-3 py-1.5 text-xs ${
-                  viewMode === 'debug' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-white text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`px-3 py-1.5 text-xs ${viewMode === 'debug' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
               >
                 Debug
               </button>
@@ -413,9 +423,7 @@ function TodayAttendance() {
           )}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${
-              showFilters ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-            }`}
+            className={`px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${showFilters ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
           >
             <Filter className="w-4 h-4" />
             Filters
@@ -444,7 +452,6 @@ function TodayAttendance() {
       {showFilters && (
         <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Class Filter */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Class</label>
               <select
@@ -460,8 +467,6 @@ function TodayAttendance() {
                 ))}
               </select>
             </div>
-            
-            {/* Schedule Filter */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Schedule</label>
               <select
@@ -477,8 +482,6 @@ function TodayAttendance() {
                 ))}
               </select>
             </div>
-            
-            {/* Date Filter */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
               <input
@@ -488,8 +491,6 @@ function TodayAttendance() {
                 className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-
-            {/* Semester Filter (Admin only) */}
             {role === 'admin' && (
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>
@@ -506,7 +507,6 @@ function TodayAttendance() {
               </div>
             )}
           </div>
-
           <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <button
               onClick={handleClearFilters}
@@ -514,7 +514,6 @@ function TodayAttendance() {
             >
               Clear Filters
             </button>
-
             {role === 'admin' && (
               <div className="relative w-full md:w-1/2">
                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
@@ -586,7 +585,6 @@ function TodayAttendance() {
         </div>
       )}
 
-      {/* ─── DEBUG MODE (Admin only) ─── */}
       {role === 'admin' && viewMode === 'debug' && attendanceData?.debug && (
         <div className="bg-gray-900 rounded-xl border border-gray-700 p-4 mb-4 overflow-x-auto">
           <div className="flex items-center gap-2 mb-2">
@@ -599,7 +597,6 @@ function TodayAttendance() {
         </div>
       )}
 
-      {/* ─── ADMIN ATTENDANCE DATA ─── */}
       {role === 'admin' && viewMode === 'summary' && (
         <>
           <div className="bg-white rounded-xl border p-4 mb-4 shadow-sm">
@@ -716,29 +713,18 @@ function TodayAttendance() {
         </>
       )}
 
-      {/* ─── ATTENDANCE DATA ─── */}
+      {/* ─── LECTURER VIEW ─── */}
       {role !== 'admin' && attendanceData && (
         <>
-          {/* Schedule Info */}
           <div className="bg-white rounded-xl border p-4 mb-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-slate-500">
                   <span className="font-medium">{attendanceData.schedule?.class_code}</span> - {attendanceData.schedule?.class_name}
-                  {role === 'admin' && attendanceData.schedule?.group_id && (
-                    <span className="ml-2 text-xs bg-gray-100 px-2 py-0.5 rounded">
-                      Group ID: {attendanceData.schedule?.group_id}
-                    </span>
-                  )}
                 </p>
                 <p className="text-sm text-slate-500">
                   {attendanceData.schedule?.day_of_week} {attendanceData.schedule?.start_time} - {attendanceData.schedule?.end_time}
                   {attendanceData.schedule?.group_name && ` • Group: ${attendanceData.schedule?.group_code || attendanceData.schedule?.group_name}`}
-                  {role === 'admin' && (
-                    <span className="ml-2 text-xs bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">
-                      Schedule ID: {attendanceData.schedule?.schedule_id}
-                    </span>
-                  )}
                 </p>
               </div>
               <div className="text-sm text-slate-500">
@@ -747,7 +733,6 @@ function TodayAttendance() {
             </div>
           </div>
 
-          {/* Summary Cards */}
           {noActualAttendanceToday ? (
             <div className="bg-white rounded-xl border p-8 text-center text-slate-500 shadow-sm mb-6">
               <p className="text-lg font-semibold text-slate-800">No attendance recorded for today yet.</p>
@@ -764,46 +749,45 @@ function TodayAttendance() {
                   <Users className="w-8 h-8 text-blue-500" />
                 </div>
               </div>
-            <div className="bg-white rounded-xl border p-4 border-green-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-green-600">Present</p>
-                  <p className="text-2xl font-bold text-green-600">{stats?.present || 0}</p>
+              <div className="bg-white rounded-xl border p-4 border-green-200 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-green-600">Present</p>
+                    <p className="text-2xl font-bold text-green-600">{stats?.present || 0}</p>
+                  </div>
+                  <UserCheck className="w-8 h-8 text-green-500" />
                 </div>
-                <UserCheck className="w-8 h-8 text-green-500" />
+              </div>
+              <div className="bg-white rounded-xl border p-4 border-yellow-200 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-yellow-600">Late</p>
+                    <p className="text-2xl font-bold text-yellow-600">{stats?.late || 0}</p>
+                  </div>
+                  <Clock className="w-8 h-8 text-yellow-500" />
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border p-4 border-red-200 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-red-600">Absent</p>
+                    <p className="text-2xl font-bold text-red-600">{stats?.absent || 0}</p>
+                  </div>
+                  <UserX className="w-8 h-8 text-red-500" />
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border p-4 border-purple-200 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-purple-600">Attendance Rate</p>
+                    <p className="text-2xl font-bold text-purple-600">{stats?.rate || 0}%</p>
+                  </div>
+                  <Activity className="w-8 h-8 text-purple-500" />
+                </div>
               </div>
             </div>
-            <div className="bg-white rounded-xl border p-4 border-yellow-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-yellow-600">Late</p>
-                  <p className="text-2xl font-bold text-yellow-600">{stats?.late || 0}</p>
-                </div>
-                <Clock className="w-8 h-8 text-yellow-500" />
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border p-4 border-red-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-red-600">Absent</p>
-                  <p className="text-2xl font-bold text-red-600">{stats?.absent || 0}</p>
-                </div>
-                <UserX className="w-8 h-8 text-red-500" />
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border p-4 border-purple-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-purple-600">Attendance Rate</p>
-                  <p className="text-2xl font-bold text-purple-600">{stats?.rate || 0}%</p>
-                </div>
-                <Activity className="w-8 h-8 text-purple-500" />
-              </div>
-            </div>
-          </div>
           )}
 
-          {/* Attendance Rate Bar */}
           <div className="bg-white rounded-xl border p-4 mb-6 shadow-sm">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-slate-700">Attendance Rate</span>
@@ -811,36 +795,20 @@ function TodayAttendance() {
             </div>
             <div className="w-full bg-slate-200 rounded-full h-3">
               <div
-                className={`h-3 rounded-full transition-all duration-500 ${
-                  (stats?.rate || 0) >= 70 ? 'bg-green-500' :
-                  (stats?.rate || 0) >= 40 ? 'bg-yellow-500' :
-                  'bg-red-500'
-                }`}
+                className={`h-3 rounded-full transition-all duration-500 ${(stats?.rate || 0) >= 70 ? 'bg-green-500' : (stats?.rate || 0) >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`}
                 style={{ width: `${stats?.rate || 0}%` }}
               />
             </div>
           </div>
 
-          {/* Student List */}
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-slate-500" />
                 <h3 className="font-semibold text-slate-700">Student List</h3>
-                {role === 'admin' && (
-                  <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">
-                    {attendanceData.students?.filter(s => s.status === 'Absent').length} absent
-                  </span>
-                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-slate-500">{attendanceData.students?.length || 0} students</span>
-                {role === 'admin' && (
-                  <button className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
-                    <Download className="w-3 h-3" />
-                    Export
-                  </button>
-                )}
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -852,9 +820,6 @@ function TodayAttendance() {
                     <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Name</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Semester</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Group</th>
-                    {role === 'admin' && (
-                      <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">FP ID</th>
-                    )}
                     <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Status</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-slate-500">Time</th>
                   </tr>
@@ -862,7 +827,7 @@ function TodayAttendance() {
                 <tbody className="divide-y divide-slate-100">
                   {attendanceData.students?.length === 0 || (selectedDate === getLocalDateString() && attendanceData.students?.every(s => !s.timestamp)) ? (
                     <tr>
-                      <td colSpan={role === 'admin' ? 8 : 7} className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan="7" className="px-4 py-8 text-center text-slate-400">
                         {selectedDate === getLocalDateString() && attendanceData.students?.length > 0
                           ? 'No attendance recorded for today yet'
                           : 'No attendance records found for this date'}
@@ -878,11 +843,6 @@ function TodayAttendance() {
                         <td className="px-4 py-3 text-sm text-slate-500">
                           {attendanceData.schedule?.group_code || attendanceData.schedule?.group_name || '-'}
                         </td>
-                        {role === 'admin' && (
-                          <td className="px-4 py-3 text-sm text-slate-500 font-mono">
-                            {student.fingerprint_id || '-'}
-                          </td>
-                        )}
                         <td className="px-4 py-3 text-sm">{getStatusBadge(student.status)}</td>
                         <td className="px-4 py-3 text-sm text-slate-500">
                           {student.timestamp ? format(new Date(student.timestamp), 'HH:mm:ss') : '-'}
@@ -895,19 +855,9 @@ function TodayAttendance() {
             </div>
           </div>
 
-          {/* Auto-refresh indicator */}
           <div className="mt-4 flex items-center gap-2 text-xs text-slate-400">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
             Auto-refresh every 30 seconds
-            {role === 'admin' && (
-              <span className="ml-2 text-slate-300">|</span>
-            )}
-            {role === 'admin' && (
-              <span className="text-slate-400">
-                <Eye className="w-3 h-3 inline mr-1" />
-                Admin: Showing all data
-              </span>
-            )}
           </div>
         </>
       )}

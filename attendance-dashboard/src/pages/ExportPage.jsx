@@ -33,7 +33,7 @@ function ExportPage() {
   const [previewData, setPreviewData] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // ─── FILTER STATES (all IDs stored as strings) ───
+  // ─── FILTER STATES ───
   const [classes, setClasses] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [cohorts, setCohorts] = useState([]);
@@ -90,7 +90,7 @@ function ExportPage() {
   const loadFilterData = async () => {
     setLoading(true);
     try {
-      // Load classes
+      // ─── 1. LOAD CLASSES ───
       const classesRes = await attendanceAPI.getClasses();
       if (classesRes.data.status === 'success') {
         let classList = (classesRes.data.classes || []).map(c => ({
@@ -115,48 +115,100 @@ function ExportPage() {
         }
       }
 
-      // Load cohorts
+      // ─── 2. LOAD COHORTS AND GROUPS ───
+      let cohortsData = [];
+      let groupsData = [];
+
       if (isAdmin) {
+        // Admin: load all cohorts
         const cohortsRes = await attendanceAPI.getCohorts();
         if (cohortsRes.data.status === 'success') {
-          const cohortList = (cohortsRes.data.cohorts || []).map(c => ({
+          cohortsData = (cohortsRes.data.cohorts || []).map(c => ({
             ...c,
             cohort_id: String(c.cohort_id)
           }));
-          setCohorts(cohortList);
-          if (cohortList.length > 0) {
-            setSelectedCohort(cohortList[0]);
-            // Filter groups for this cohort
-            const initialGroups = allGroups.filter(g => String(g.cohort_id) === String(cohortList[0].cohort_id));
-            setFilteredGroups(initialGroups);
-            if (initialGroups.length > 0) {
-              setSelectedGroup(initialGroups[0]);
+          
+          // Load all groups
+          const groupsRes = await attendanceAPI.getGroups();
+          if (groupsRes.data.status === 'success') {
+            groupsData = (groupsRes.data.cohorts || []).flatMap(c => 
+              (c.groups || []).map(g => ({ 
+                ...g, 
+                group_id: String(g.group_id),
+                cohort_id: String(c.cohort_id),
+                cohort_name: c.cohort_name 
+              }))
+            );
+          }
+        }
+      } else {
+        // ─── LECTURER: Load only their groups/cohorts ───
+        try {
+          const lecturerGroupsRes = await attendanceAPI.getLecturerGroups();
+          console.log('Lecturer groups raw response:', lecturerGroupsRes.data);
+          
+          if (lecturerGroupsRes.data.status === 'success') {
+            const data = lecturerGroupsRes.data.data || {};
+            
+            // Log the actual data structure
+            console.log('data.cohorts:', data.cohorts);
+            console.log('data.groups:', data.groups);
+            
+            // Build cohorts
+            cohortsData = (data.cohorts || []).map(c => ({
+              ...c,
+              cohort_id: String(c.cohort_id)
+            }));
+            
+            // ─── FALLBACK: If data.groups is empty, extract from cohorts ───
+            if (data.groups && data.groups.length > 0) {
+              groupsData = data.groups.map(g => ({
+                ...g,
+                group_id: String(g.group_id),
+                cohort_id: String(g.cohort_id)
+              }));
+            } else {
+              // Extract groups from cohorts (since cohorts have groups nested)
+              console.log('data.groups empty, extracting from cohorts...');
+              groupsData = (data.cohorts || []).flatMap(c => 
+                (c.groups || []).map(g => ({
+                  ...g,
+                  group_id: String(g.group_id),
+                  cohort_id: String(c.cohort_id)
+                }))
+              );
+              console.log('Extracted groups from cohorts:', groupsData);
             }
           }
+        } catch (err) {
+          console.error('Failed to load lecturer groups:', err);
         }
       }
 
-      // Load all groups
-      const groupsRes = await attendanceAPI.getGroups();
-      if (groupsRes.data.status === 'success') {
-        const flattened = (groupsRes.data.cohorts || []).flatMap(c => 
-          (c.groups || []).map(g => ({ 
-            ...g, 
-            group_id: String(g.group_id),
-            cohort_id: String(c.cohort_id),
-            cohort_name: c.cohort_name 
-          }))
+      // Log final data
+      console.log('Final cohortsData:', cohortsData);
+      console.log('Final groupsData:', groupsData);
+
+      setCohorts(cohortsData);
+      setAllGroups(groupsData);
+      
+      // ─── 3. SET DEFAULT SELECTIONS ───
+      if (cohortsData.length > 0) {
+        const firstCohort = cohortsData[0];
+        setSelectedCohort(firstCohort);
+        
+        const initialGroups = groupsData.filter(g => 
+          String(g.cohort_id) === String(firstCohort.cohort_id)
         );
-        setAllGroups(flattened);
-        // If already have selectedCohort, update filteredGroups
-        if (selectedCohort) {
-          const initialGroups = flattened.filter(g => String(g.cohort_id) === String(selectedCohort.cohort_id));
-          setFilteredGroups(initialGroups);
-          if (initialGroups.length > 0) {
-            setSelectedGroup(initialGroups[0]);
-          }
+        setFilteredGroups(initialGroups);
+        
+        if (initialGroups.length > 0) {
+          setSelectedGroup(initialGroups[0]);
+        } else {
+          setSelectedGroup(null);
         }
       }
+      
     } catch (err) {
       console.error('Failed to load filter data:', err);
       setError('Failed to load data. Please refresh the page.');
@@ -197,11 +249,15 @@ function ExportPage() {
 
   // ─── HANDLE COHORT CHANGE ───
   const handleCohortChange = (cohortId) => {
+    console.log('Cohort changed to:', cohortId);
+    console.log('All groups:', allGroups);
+    
     const cohort = cohorts.find(c => String(c.cohort_id) === String(cohortId));
     setSelectedCohort(cohort || null);
     
-    // Filter groups for this cohort
     const groups = allGroups.filter(g => String(g.cohort_id) === String(cohortId));
+    console.log('Filtered groups:', groups);
+    
     setFilteredGroups(groups);
     
     if (groups.length > 0) {
@@ -489,15 +545,22 @@ function ExportPage() {
                   setSelectedGroup(group || null);
                 }}
                 className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={!selectedCohort}
+                disabled={!selectedCohort || filteredGroups.length === 0}
               >
-                <option value="">Select Group</option>
+                <option value="">
+                  {!selectedCohort ? 'Select Cohort First' : 
+                   filteredGroups.length === 0 ? 'No Groups Available' : 
+                   'Select Group'}
+                </option>
                 {filteredGroups.map(g => (
                   <option key={g.group_id} value={g.group_id}>
                     {g.group_name} {g.group_code ? `(${g.group_code})` : ''}
                   </option>
                 ))}
               </select>
+              {selectedCohort && filteredGroups.length === 0 && (
+                <p className="text-xs text-yellow-600 mt-1">No groups found for this cohort</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Date Range</label>
@@ -556,15 +619,22 @@ function ExportPage() {
                   setSelectedGroup(group || null);
                 }}
                 className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={!selectedCohort}
+                disabled={!selectedCohort || filteredGroups.length === 0}
               >
-                <option value="">Select Group</option>
+                <option value="">
+                  {!selectedCohort ? 'Select Cohort First' : 
+                   filteredGroups.length === 0 ? 'No Groups Available' : 
+                   'Select Group'}
+                </option>
                 {filteredGroups.map(g => (
                   <option key={g.group_id} value={g.group_id}>
                     {g.group_name} {g.group_code ? `(${g.group_code})` : ''}
                   </option>
                 ))}
               </select>
+              {selectedCohort && filteredGroups.length === 0 && (
+                <p className="text-xs text-yellow-600 mt-1">No groups found for this cohort</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Semester</label>

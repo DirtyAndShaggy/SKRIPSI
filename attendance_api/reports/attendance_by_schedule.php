@@ -112,7 +112,7 @@ echo json_encode([
     "debug" => [
         "group_id" => $group_id,
         "student_count" => $total_students,
-        "attendance_count" => count($attendanceMap)
+        "attendance_count" => $total_students
     ],
     "summary" => [
         "total_students" => $total_students,

@@ -108,6 +108,15 @@ export const attendanceAPI = {
   return Promise.reject('No user logged in');
   },
 
+  // ─── GET LECTURER GROUPS (for export filtering) ───
+getLecturerGroups: () => {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.user_id) {
+    return api.get(`/lecturers/my_groups.php?user_id=${user.user_id}`);
+  }
+  return Promise.reject('No user logged in');
+},
+
   //Attendance
   getAttendanceBySchedule: (scheduleId, date) => 
   api.get(`/reports/attendance_by_schedule.php?schedule_id=${scheduleId}&date=${date}`),
