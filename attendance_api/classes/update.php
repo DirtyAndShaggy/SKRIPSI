@@ -7,7 +7,6 @@ $data = json_decode(file_get_contents("php://input"), true);
 $class_id = $data['class_id'] ?? 0;
 $class_code = $data['class_code'] ?? '';
 $class_name = $data['class_name'] ?? '';
-$lecturer_id = $data['lecturer_id'] ?? null;
 $class_type = $data['class_type'] ?? 'Lecture';
 $semester_offered = $data['semester_offered'] ?? null;
 $is_active = $data['is_active'] ?? 1;
@@ -19,13 +18,11 @@ if (!$class_id) {
     exit;
 }
 
-$lecturer_value = $lecturer_id ? "'$lecturer_id'" : "NULL";
 $semester_value = $semester_offered ? "'$semester_offered'" : "NULL";
 
 $query = "UPDATE classes SET 
           class_code = '$class_code',
           class_name = '$class_name',
-          lecturer_id = $lecturer_value,
           class_type = '$class_type',
           semester_offered = $semester_value,
           is_active = '$is_active'
@@ -47,8 +44,8 @@ if (mysqli_query($conn, $query)) {
     
     if (!empty($group_ids) && is_array($group_ids)) {
         foreach ($group_ids as $group_id) {
-            $gcQuery = "INSERT INTO group_classes (group_id, class_id, semester) 
-                        VALUES ('$group_id', '$class_id', $semester_value)";
+            $gcQuery = "INSERT INTO group_classes (group_id, class_id, semester, is_active) 
+                        VALUES ('$group_id', '$class_id', $semester_value, 1)";
             mysqli_query($conn, $gcQuery);
         }
     }

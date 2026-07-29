@@ -3,13 +3,15 @@ import {
   Plus, Edit2, Trash2, X, RefreshCw, 
   Users, Search, ChevronDown, 
   ChevronUp, BookOpen, Layers,
-  Power, PowerOff, CheckCircle, XCircle,
-  Filter
+  Power, PowerOff, Filter,
+  Calendar, Clock, User, Building,
+  UserPlus, Save, Edit3
 } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
 function Classes() {
   const [classes, setClasses] = useState([]);
+  const [allSchedules, setAllSchedules] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [lecturers, setLecturers] = useState([]);
   const [students, setStudents] = useState([]);
@@ -29,12 +31,16 @@ function Classes() {
   const [groupFilter, setGroupFilter] = useState('');
   const [expandedClass, setExpandedClass] = useState(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
-  const [selectedClassForStudents, setSelectedClassForStudents] = useState(null);
+  const [selectedScheduleForStudents, setSelectedScheduleForStudents] = useState(null);
+  
+  // ─── GRACE PERIOD EDIT ───
+  const [editingGraceSchedule, setEditingGraceSchedule] = useState(null);
+  const [gracePeriodValue, setGracePeriodValue] = useState('');
+  const [updatingGrace, setUpdatingGrace] = useState(false);
   
   const [formData, setFormData] = useState({
     class_code: '',
     class_name: '',
-    lecturer_id: '',
     class_type: 'Lecture',
     semester_offered: '',
     cohort_id: '',
@@ -62,14 +68,14 @@ function Classes() {
         setClasses(classesResponse.data.classes);
       }
 
+      const schedulesResponse = await attendanceAPI.getAllSchedules();
+      if (schedulesResponse.data.status === 'success') {
+        setAllSchedules(schedulesResponse.data.schedules);
+      }
+
       const roomsResponse = await attendanceAPI.getRooms();
       if (roomsResponse.data.status === 'success') {
         setRooms(roomsResponse.data.rooms);
-      }
-
-      const lecturersResponse = await attendanceAPI.getLecturers();
-      if (lecturersResponse.data.status === 'success') {
-        setLecturers(lecturersResponse.data.lecturers);
       }
 
       const studentsResponse = await attendanceAPI.getStudents();
@@ -108,6 +114,50 @@ function Classes() {
 
   const activeFilterCount = [searchTerm, semesterFilter, statusFilter !== 'all', groupFilter].filter(Boolean).length;
 
+  // ─── GRACE PERIOD UPDATE ───
+  const handleUpdateGracePeriod = async (scheduleId, newGracePeriod) => {
+    if (newGracePeriod < 0 || newGracePeriod > 120) {
+      alert('Grace period must be between 0 and 120 minutes');
+      return;
+    }
+
+    setUpdatingGrace(true);
+    try {
+      // Get the schedule to update
+      const schedule = allSchedules.find(s => String(s.schedule_id) === String(scheduleId));
+      if (!schedule) {
+        alert('Schedule not found');
+        return;
+      }
+
+      // Update schedule with new grace period
+      const data = {
+        class_id: schedule.class_id,
+        group_id: schedule.group_id,
+        room_id: schedule.room_id,
+        day_of_week: schedule.day_of_week,
+        start_time: schedule.start_time,
+        end_time: schedule.end_time,
+        device_id: schedule.device_id || 'ESP32_01',
+        semester: schedule.semester || null,
+        grace_period: parseInt(newGracePeriod)
+      };
+
+      await attendanceAPI.updateSchedule(scheduleId, data);
+      alert('Grace period updated successfully!');
+      
+      // Refresh data
+      setEditingGraceSchedule(null);
+      setGracePeriodValue('');
+      loadData(false);
+    } catch (err) {
+      console.error('Failed to update grace period', err);
+      alert('Error updating grace period. Please try again.');
+    } finally {
+      setUpdatingGrace(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -115,7 +165,6 @@ function Classes() {
       const data = {
         class_code: formData.class_code.toUpperCase(),
         class_name: formData.class_name,
-        lecturer_id: formData.lecturer_id || null,
         class_type: formData.class_type,
         semester_offered: formData.semester_offered || null,
         is_active: formData.is_active,
@@ -134,7 +183,6 @@ function Classes() {
       setFormData({
         class_code: '',
         class_name: '',
-        lecturer_id: '',
         class_type: 'Lecture',
         semester_offered: '',
         cohort_id: '',
@@ -166,7 +214,6 @@ function Classes() {
     setFormData({
       class_code: cls.class_code,
       class_name: cls.class_name,
-      lecturer_id: cls.lecturer_id || '',
       class_type: cls.class_type || 'Lecture',
       semester_offered: cls.semester_offered || '',
       cohort_id: assignedCohortId,
@@ -206,8 +253,8 @@ function Classes() {
     }
   };
 
-  const handleViewStudents = (cls) => {
-    setSelectedClassForStudents(cls);
+  const handleManageStudents = (schedule) => {
+    setSelectedScheduleForStudents(schedule);
     setShowStudentModal(true);
   };
 
@@ -245,7 +292,6 @@ function Classes() {
     setFormData({
       class_code: '',
       class_name: '',
-      lecturer_id: '',
       class_type: 'Lecture',
       semester_offered: '',
       cohort_id: '',
@@ -258,13 +304,10 @@ function Classes() {
   const filteredClasses = classes.filter(cls => {
     const searchMatch = 
       cls.class_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cls.class_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cls.lecturer_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      cls.class_name?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const semesterMatch = !semesterFilter ||
-      String(cls.semester_offered) === String(semesterFilter) ||
-      cls.students?.some(s => String(s.semester) === String(semesterFilter)) ||
-      cls.assigned_groups?.some(g => String(g.semester) === String(semesterFilter));
+      String(cls.semester_offered) === String(semesterFilter);
 
     const statusMatch = statusFilter === 'all' || 
       (statusFilter === 'active' && Number(cls.is_active) === 1) ||
@@ -278,9 +321,8 @@ function Classes() {
     return searchMatch && semesterMatch && statusMatch && groupMatch;
   });
 
-  const getStudentsForClass = (classId) => {
-    const cls = classes.find(c => c.class_id === classId);
-    return cls?.students || [];
+  const getClassSchedules = (classId) => {
+    return allSchedules.filter(s => String(s.class_id) === String(classId));
   };
 
   const filterGroups = allGroups.filter(g => g.is_active);
@@ -288,6 +330,357 @@ function Classes() {
   const availableGroupsForForm = filterGroups.filter(g =>
     !formData.cohort_id || String(g.cohort_id) === String(formData.cohort_id)
   );
+
+  // ─── STUDENT ASSIGNMENT MODAL ───
+  const StudentAssignmentModal = () => {
+    if (!showStudentModal || !selectedScheduleForStudents) return null;
+
+    const [availableStudents, setAvailableStudents] = useState([]);
+    const [filteredStudents, setFilteredStudents] = useState([]);
+    const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+    const [loadingStudents, setLoadingStudents] = useState(true);
+    const [semesterFilter, setSemesterFilter] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [error, setError] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(50);
+
+    useEffect(() => {
+      if (selectedScheduleForStudents && selectedScheduleForStudents.schedule_id) {
+        loadStudentsForSchedule();
+      } else {
+        setError('Invalid schedule selected.');
+        setLoadingStudents(false);
+      }
+    }, [selectedScheduleForStudents]);
+
+    const loadStudentsForSchedule = async () => {
+      setLoadingStudents(true);
+      setError('');
+      try {
+        const scheduleId = selectedScheduleForStudents.schedule_id;
+        const response = await attendanceAPI.getScheduleStudents(scheduleId);
+        
+        if (response.data.status === 'success') {
+          setAvailableStudents(response.data.students || []);
+          const assigned = (response.data.students || [])
+            .filter(s => s.is_assigned)
+            .map(s => s.student_id);
+          setSelectedStudentIds(assigned);
+        } else {
+          setError(response.data.message || 'Failed to load students');
+        }
+      } catch (err) {
+        console.error('Failed to load students:', err);
+        setError('Connection error. Please try again.');
+      } finally {
+        setLoadingStudents(false);
+      }
+    };
+
+    useEffect(() => {
+      let filtered = availableStudents;
+      
+      if (semesterFilter) {
+        filtered = filtered.filter(s => String(s.semester) === String(semesterFilter));
+      }
+      
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        filtered = filtered.filter(s => 
+          s.name?.toLowerCase().includes(term) ||
+          s.nim?.toLowerCase().includes(term)
+        );
+      }
+      
+      setFilteredStudents(filtered);
+      setCurrentPage(1);
+    }, [availableStudents, semesterFilter, searchTerm]);
+
+    const handleToggleStudent = (studentId) => {
+      setSelectedStudentIds(prev =>
+        prev.includes(studentId) 
+          ? prev.filter(id => id !== studentId)
+          : [...prev, studentId]
+      );
+    };
+
+    const handleSelectAll = () => {
+      const currentPageIds = getCurrentPageStudents().map(s => s.student_id);
+      const allSelected = currentPageIds.every(id => selectedStudentIds.includes(id));
+      
+      if (allSelected) {
+        setSelectedStudentIds(prev => prev.filter(id => !currentPageIds.includes(id)));
+      } else {
+        setSelectedStudentIds(prev => [...new Set([...prev, ...currentPageIds])]);
+      }
+    };
+
+    const getCurrentPageStudents = () => {
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      const endIndex = startIndex + itemsPerPage;
+      return filteredStudents.slice(startIndex, endIndex);
+    };
+
+    const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+    const currentPageStudents = getCurrentPageStudents();
+    const allSelectedOnPage = currentPageStudents.every(s => selectedStudentIds.includes(s.student_id));
+
+    const handleSaveAssignments = async () => {
+      try {
+        await attendanceAPI.assignStudentsToSchedule(selectedScheduleForStudents.schedule_id, selectedStudentIds);
+        setShowStudentModal(false);
+        setSelectedScheduleForStudents(null);
+        loadData();
+        alert(`Students assigned successfully! ${selectedStudentIds.length} students assigned.`);
+      } catch (err) {
+        console.error('Failed to assign students:', err);
+        alert('Error assigning students. Please try again.');
+      }
+    };
+
+    const getAssignedCount = () => {
+      return availableStudents.filter(s => selectedStudentIds.includes(s.student_id)).length;
+    };
+
+    const getUnassignedCount = () => {
+      return availableStudents.filter(s => !selectedStudentIds.includes(s.student_id)).length;
+    };
+
+    if (loadingStudents) {
+      return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6">
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-4 text-slate-500">Loading students...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6">
+            <div className="text-center py-8">
+              <div className="text-red-500 text-4xl mb-4">⚠️</div>
+              <p className="text-slate-700">{error}</p>
+              <button
+                onClick={() => {
+                  setShowStudentModal(false);
+                  setSelectedScheduleForStudents(null);
+                }}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="text-xl font-bold text-slate-800">
+                {selectedScheduleForStudents?.class_code} - {selectedScheduleForStudents?.class_name}
+              </h3>
+              <p className="text-sm text-slate-500">
+                {selectedScheduleForStudents?.day_of_week} {selectedScheduleForStudents?.start_time} - {selectedScheduleForStudents?.end_time}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowStudentModal(false);
+                setSelectedScheduleForStudents(null);
+              }}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="bg-blue-50 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-blue-600">{availableStudents.length}</div>
+              <div className="text-xs text-blue-500">Total Students</div>
+            </div>
+            <div className="bg-green-50 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-green-600">{getAssignedCount()}</div>
+              <div className="text-xs text-green-500">Assigned</div>
+            </div>
+            <div className="bg-red-50 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-red-600">{getUnassignedCount()}</div>
+              <div className="text-xs text-red-500">Unassigned</div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 mb-4">
+            <div className="flex-1 min-w-[200px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name or NIM..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="w-40">
+              <select
+                value={semesterFilter}
+                onChange={(e) => setSemesterFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Semesters</option>
+                {semesterOptions.map(sem => (
+                  <option key={sem} value={sem}>Semester {sem}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-500">Show:</label>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                className="border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+                <option value={500}>500</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto border rounded-lg">
+            <table className="w-full">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-12">
+                    <input
+                      type="checkbox"
+                      checked={allSelectedOnPage && currentPageStudents.length > 0}
+                      onChange={handleSelectAll}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      disabled={currentPageStudents.length === 0}
+                    />
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">NIM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Name</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Semester</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Fingerprint</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {currentPageStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-4 py-8 text-center text-gray-400">
+                      {availableStudents.length === 0 
+                        ? 'No students found in system' 
+                        : 'No students match the filters'}
+                    </td>
+                  </tr>
+                ) : (
+                  currentPageStudents.map((student) => (
+                    <tr key={student.student_id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedStudentIds.includes(student.student_id)}
+                          onChange={() => handleToggleStudent(student.student_id)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-sm font-mono">{student.nim}</td>
+                      <td className="px-4 py-2 text-sm">{student.name}</td>
+                      <td className="px-4 py-2 text-sm">{student.semester ? `Semester ${student.semester}` : '-'}</td>
+                      <td className="px-4 py-2 text-sm">
+                        {student.fingerprint_id ? (
+                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">Slot {student.fingerprint_id}</span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">Not enrolled</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-sm">
+                        {selectedStudentIds.includes(student.student_id) ? (
+                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">Assigned</span>
+                        ) : (
+                          <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-xs">Unassigned</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <span className="text-sm text-slate-500">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredStudents.length)} of {filteredStudents.length} students
+              </span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="px-3 py-1 text-sm">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="border-t border-gray-200 pt-3 mt-3 flex justify-between items-center">
+            <div className="text-sm text-slate-500">
+              {selectedStudentIds.length} students selected
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowStudentModal(false);
+                  setSelectedScheduleForStudents(null);
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAssignments}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <UserPlus className="w-4 h-4" />
+                Save Assignments ({selectedStudentIds.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -305,10 +698,9 @@ function Classes() {
       <div className="flex justify-between items-start flex-wrap gap-4 mb-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Class Management</h2>
-          <p className="text-sm text-slate-500">Manage academic classes (subjects) before scheduling</p>
+          <p className="text-sm text-slate-500">Manage academic classes (subjects) and view schedules</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* ─── FILTER TOGGLE BUTTON ─── */}
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${
@@ -337,7 +729,6 @@ function Classes() {
               setFormData({
                 class_code: '',
                 class_name: '',
-                lecturer_id: '',
                 class_type: 'Lecture',
                 semester_offered: '',
                 cohort_id: '',
@@ -366,15 +757,15 @@ function Classes() {
         <span>{filteredClasses.length} classes</span>
       </div>
 
-      {/* ─── FILTERS SECTION ─── (Togglable) */}
+      {/* ─── FILTERS SECTION ─── */}
       {showFilters && (
         <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by code, name, lecturer..."
+                placeholder="Search by code, name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -417,17 +808,16 @@ function Classes() {
                 ))}
               </select>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={clearFilters}
-                className="w-full border rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-50"
-              >
-                Clear Filters
-              </button>
-            </div>
+          </div>
+          <div className="flex justify-end mt-3">
+            <button
+              onClick={clearFilters}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              Clear Filters
+            </button>
           </div>
           
-          {/* Active filters display */}
           {activeFilterCount > 0 && (
             <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
               <span className="text-xs text-gray-500">Active filters:</span>
@@ -467,7 +857,6 @@ function Classes() {
             {editingClass ? 'Edit Class' : 'Add New Class'}
           </h3>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* ... rest of form (same as before) ... */}
             <input
               type="text"
               placeholder="Class Code (e.g., IF301)"
@@ -484,18 +873,6 @@ function Classes() {
               className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
-            <select
-              value={formData.lecturer_id}
-              onChange={(e) => setFormData({...formData, lecturer_id: e.target.value})}
-              className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select Lecturer</option>
-              {lecturers.map(lec => (
-                <option key={lec.lecturer_id} value={lec.lecturer_id}>
-                  {lec.lecturer_code} - {lec.full_name} {lec.department ? `(${lec.department})` : ''}
-                </option>
-              ))}
-            </select>
             <select
               value={formData.class_type}
               onChange={(e) => setFormData({...formData, class_type: e.target.value})}
@@ -528,7 +905,6 @@ function Classes() {
               ))}
             </select>
             
-            {/* Toggle Switch for Active/Inactive */}
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <span className="text-sm text-slate-700">Inactive</span>
@@ -551,7 +927,6 @@ function Classes() {
               </span>
             </div>
 
-            {/* Room Selection */}
             <div className="md:col-span-3">
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Rooms (select all that apply)
@@ -579,7 +954,6 @@ function Classes() {
               )}
             </div>
 
-            {/* Group Selection */}
             <div className="md:col-span-3">
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 <Layers className="w-4 h-4 inline mr-1" />
@@ -631,226 +1005,239 @@ function Classes() {
             <p className="text-sm">Try adjusting your filters or add a new class</p>
           </div>
         ) : (
-          filteredClasses.map((cls) => (
-            <div key={cls.class_id} className="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow">
-              {/* Class Header */}
-              <div className="p-4 flex items-start justify-between cursor-pointer" onClick={() => toggleExpand(cls.class_id)}>
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="text-sm font-bold text-blue-600">{cls.class_code}</span>
-                    <span className="text-lg font-semibold text-slate-800">{cls.class_name}</span>
-                    {cls.is_active == 1 ? (
-                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                        Active
+          filteredClasses.map((cls) => {
+            const classSchedules = getClassSchedules(cls.class_id);
+            const isExpanded = expandedClass === cls.class_id;
+
+            return (
+              <div key={cls.class_id} className="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-4 flex items-start justify-between cursor-pointer" onClick={() => toggleExpand(cls.class_id)}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-sm font-bold text-blue-600">{cls.class_code}</span>
+                      <span className="text-lg font-semibold text-slate-800">{cls.class_name}</span>
+                      {cls.is_active == 1 ? (
+                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                          Active
+                        </span>
+                      ) : (
+                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                          Inactive
+                        </span>
+                      )}
+                      <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
+                        {cls.class_type || 'Lecture'}
                       </span>
-                    ) : (
-                      <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                        Inactive
+                      <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full text-xs">
+                        {classSchedules.length} schedules
                       </span>
-                    )}
-                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
-                      {cls.class_type || 'Lecture'}
-                    </span>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-4 mt-1 text-sm text-slate-500">
+                      <span>🏠 {cls.rooms?.length > 0 ? cls.rooms.map(r => r.room_code).join(', ') : 'No rooms'}</span>
+                      {cls.semester_offered && <span>🎓 Semester {cls.semester_offered}</span>}
+                      
+                      {cls.assigned_groups && cls.assigned_groups.length > 0 ? (
+                        <span className="flex items-center gap-1">
+                          <span className="text-xs font-medium text-purple-600">📋 Groups:</span>
+                          {cls.assigned_groups.map((group, idx) => (
+                            <span key={idx} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs">
+                              {group.group_code || group.group_name}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">No groups assigned</span>
+                      )}
+                    </div>
                   </div>
                   
-                  <div className="flex flex-wrap gap-4 mt-1 text-sm text-slate-500">
-                    <span>👨‍🏫 {cls.lecturer_name || 'No lecturer assigned'}</span>
-                    <span>🏠 {cls.rooms?.length > 0 ? cls.rooms.map(r => r.room_code).join(', ') : 'No rooms'}</span>
-                    <span>👥 {cls.student_count || 0} students</span>
-                    {cls.semester_offered && <span>🎓 Semester {cls.semester_offered}</span>}
-                    
-                    {cls.assigned_groups && cls.assigned_groups.length > 0 ? (
-                      <span className="flex items-center gap-1">
-                        <span className="text-xs font-medium text-purple-600">📋 Groups:</span>
-                        {cls.assigned_groups.map((group, idx) => (
-                          <span key={idx} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs">
-                            {group.group_code || group.group_name}
-                          </span>
-                        ))}
-                      </span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit(cls);
+                      }}
+                      className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
+                      title="Edit class"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleStatus(cls.class_id, cls.is_active);
+                      }}
+                      className={`p-1 rounded transition-colors ${
+                        cls.is_active == 1 
+                          ? 'text-green-600 hover:text-green-800 hover:bg-green-50' 
+                          : 'text-red-600 hover:text-red-800 hover:bg-red-50'
+                      }`}
+                      title={cls.is_active == 1 ? 'Deactivate class' : 'Activate class'}
+                    >
+                      {cls.is_active == 1 ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(cls.class_id);
+                      }}
+                      className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
+                      title="Delete class"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button className="text-gray-400 hover:text-gray-600 p-1">
+                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expanded Content - Schedules List with Grace Period Edit */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t border-gray-100 pt-3">
+                    {classSchedules.length === 0 ? (
+                      <p className="text-sm text-slate-400 py-2">No schedules created for this class yet.</p>
                     ) : (
-                      <span className="text-xs text-gray-400">No groups assigned</span>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-medium text-slate-700">Schedules</h4>
+                          <span className="text-xs text-slate-400">{classSchedules.length} schedules</span>
+                        </div>
+                        {classSchedules.map((schedule) => {
+                          const group = allGroups.find(g => String(g.group_id) === String(schedule.group_id));
+                          const room = rooms.find(r => String(r.room_id) === String(schedule.room_id));
+                          const isEditingGrace = editingGraceSchedule === schedule.schedule_id;
+
+                          return (
+                            <div key={schedule.schedule_id} className="bg-gray-50 rounded-lg border p-3 hover:shadow-sm transition-shadow">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium text-slate-800 text-sm">
+                                      {schedule.day_of_week}
+                                    </span>
+                                    <span className="text-sm text-slate-600">
+                                      <Clock className="w-3.5 h-3.5 inline mr-1" />
+                                      {schedule.start_time} - {schedule.end_time}
+                                    </span>
+                                    {/* ─── GRACE PERIOD DISPLAY / EDIT ─── */}
+                                    {isEditingGrace ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="120"
+                                          value={gracePeriodValue}
+                                          onChange={(e) => setGracePeriodValue(e.target.value)}
+                                          className="w-16 border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                          autoFocus
+                                        />
+                                        <span className="text-xs text-slate-500">min</span>
+                                        <button
+                                          onClick={() => {
+                                            if (gracePeriodValue) {
+                                              handleUpdateGracePeriod(schedule.schedule_id, gracePeriodValue);
+                                            }
+                                          }}
+                                          disabled={updatingGrace}
+                                          className="text-green-600 hover:text-green-800 p-0.5"
+                                          title="Save grace period"
+                                        >
+                                          <Save className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setEditingGraceSchedule(null);
+                                            setGracePeriodValue('');
+                                          }}
+                                          className="text-red-500 hover:text-red-700 p-0.5"
+                                          title="Cancel"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span className="flex items-center gap-1 text-xs bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">
+                                        ⏰ Grace: {schedule.grace_period || 15}m
+                                        <button
+                                          onClick={() => {
+                                            setEditingGraceSchedule(schedule.schedule_id);
+                                            setGracePeriodValue(String(schedule.grace_period || 15));
+                                          }}
+                                          className="text-yellow-600 hover:text-yellow-800"
+                                          title="Edit grace period"
+                                        >
+                                          <Edit3 className="w-3 h-3" />
+                                        </button>
+                                      </span>
+                                    )}
+                                    {group && (
+                                      <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
+                                        {group.group_code || group.group_name}
+                                      </span>
+                                    )}
+                                    {room && (
+                                      <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                                        <Building className="w-3 h-3 inline mr-1" />
+                                        {room.room_code}
+                                      </span>
+                                    )}
+                                    <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">
+                                      <Users className="w-3 h-3 inline mr-1" />
+                                      {schedule.student_count || 0} students
+                                    </span>
+                                    {schedule.lecturer_name && (
+                                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                                        <User className="w-3 h-3 inline mr-1" />
+                                        {schedule.lecturer_name}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {schedule.device_id && (
+                                    <div className="text-xs text-slate-400 mt-1">
+                                      Device: {schedule.device_id}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                                  <button
+                                    onClick={() => handleManageStudents(schedule)}
+                                    className="text-green-600 hover:text-green-800 p-1 hover:bg-green-50 rounded transition-colors"
+                                    title="Manage students"
+                                  >
+                                    <Users className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                </div>
-                
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleViewStudents(cls);
-                    }}
-                    className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
-                    title="View students"
-                  >
-                    <Users className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEdit(cls);
-                    }}
-                    className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
-                    title="Edit class"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleStatus(cls.class_id, cls.is_active);
-                    }}
-                    className={`p-1 rounded transition-colors ${
-                      cls.is_active == 1 
-                        ? 'text-green-600 hover:text-green-800 hover:bg-green-50' 
-                        : 'text-red-600 hover:text-red-800 hover:bg-red-50'
-                    }`}
-                    title={cls.is_active == 1 ? 'Deactivate class' : 'Activate class'}
-                  >
-                    {cls.is_active == 1 ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(cls.class_id);
-                    }}
-                    className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
-                    title="Delete class"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <button className="text-gray-400 hover:text-gray-600 p-1">
-                    {expandedClass === cls.class_id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
-                </div>
+                )}
               </div>
-
-              {/* Expanded Content - Student List */}
-              {expandedClass === cls.class_id && (
-                <div className="px-4 pb-4 border-t border-gray-100 pt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-medium text-slate-700">Students enrolled</h4>
-                    <span className="text-xs text-slate-400">{getStudentsForClass(cls.class_id).length} students</span>
-                  </div>
-                  {getStudentsForClass(cls.class_id).length === 0 ? (
-                    <p className="text-sm text-slate-400">No students enrolled yet. Assign students in Schedule Management.</p>
-                  ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      {getStudentsForClass(cls.class_id).map((student, idx) => (
-                        <div key={idx} className="text-sm text-slate-600 bg-gray-50 px-3 py-1 rounded flex items-center gap-2">
-                          <span className="font-mono text-xs text-gray-400">{student.nim}</span>
-                          <span>{student.name}</span>
-                          {student.semester && (
-                            <span className="text-xs text-gray-400">Sem {student.semester}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
-      {/* Student Modal */}
-      {showStudentModal && selectedClassForStudents && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="text-xl font-bold text-slate-800">{selectedClassForStudents.class_code}</h3>
-                <p className="text-sm text-slate-500">{selectedClassForStudents.class_name}</p>
-              </div>
-              <button
-                onClick={() => {
-                  setShowStudentModal(false);
-                  setSelectedClassForStudents(null);
-                }}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-2 mb-4 text-sm text-slate-500">
-              <Users className="w-4 h-4" />
-              <span>{getStudentsForClass(selectedClassForStudents.class_id).length} students</span>
-              <span className="text-slate-300">|</span>
-              <span>👨‍🏫 {selectedClassForStudents.lecturer_name || 'No lecturer'}</span>
-              <span className="text-slate-300">|</span>
-              <span>🏠 {selectedClassForStudents.rooms?.map(r => r.room_name).join(', ') || 'No rooms'}</span>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">NIM</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Name</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Semester</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Fingerprint</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {getStudentsForClass(selectedClassForStudents.class_id).length === 0 ? (
-                    <tr>
-                      <td colSpan="4" className="px-4 py-8 text-center text-gray-400">
-                        No students enrolled
-                      </td>
-                    </tr>
-                  ) : (
-                    getStudentsForClass(selectedClassForStudents.class_id).map((student, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm font-mono">{student.nim}</td>
-                        <td className="px-4 py-2 text-sm">{student.name}</td>
-                        <td className="px-4 py-2 text-sm">
-                          {student.semester ? `Semester ${student.semester}` : '-'}
-                        </td>
-                        <td className="px-4 py-2 text-sm">
-                          {student.fingerprint_id ? (
-                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">
-                              ✓ Slot {student.fingerprint_id}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">Not enrolled</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="border-t border-gray-200 pt-3 mt-3 flex justify-end">
-              <button
-                onClick={() => {
-                  setShowStudentModal(false);
-                  setSelectedClassForStudents(null);
-                }}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Student Assignment Modal */}
+      <StudentAssignmentModal />
 
       {/* Legend */}
       <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
         <span>📚 <strong>Class:</strong> Academic subject entity</span>
-        <span>👨‍🏫 <strong>Lecturer:</strong> Assigned instructor</span>
         <span>🏠 <strong>Rooms:</strong> Possible rooms for this class</span>
-        <span>👥 <strong>Students:</strong> Enrolled students (view only)</span>
+        <span>📋 <strong>Groups:</strong> Which student groups take this class</span>
+        <span>📅 <strong>Schedule:</strong> Expand to see all schedules for this class</span>
+        <span>👥 <strong>Students:</strong> Manage students per schedule</span>
+        <span>⏰ <strong>Grace Period:</strong> Click the edit icon to change late tolerance</span>
         <span>🟢 <strong>Active:</strong> Class is available for scheduling</span>
         <span>🔴 <strong>Inactive:</strong> Class is archived</span>
-        <span>📋 <strong>Groups:</strong> Which student groups take this class</span>
-        <span>🔽 <strong>Filters:</strong> Click the Filters button to show/hide filter options</span>
       </div>
     </div>
   );

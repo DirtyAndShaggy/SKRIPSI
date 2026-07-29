@@ -26,10 +26,11 @@ SELECT
     cs.device_id,
     cs.semester,
     cs.grace_period,
+    cs.lecturer_id,
     c.class_code,
     c.class_name,
-    c.lecturer_id,
     l.full_name as lecturer_name,
+    l.lecturer_code as lecturer_code,
     r.room_code,
     r.room_name,
     r.building,
@@ -41,7 +42,7 @@ SELECT
     (SELECT COUNT(*) FROM schedule_students ss WHERE ss.schedule_id = cs.schedule_id) as student_count
 FROM class_schedules cs
 JOIN classes c ON cs.class_id = c.class_id
-LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
+LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
 LEFT JOIN rooms r ON cs.room_id = r.room_id
 LEFT JOIN `groups` g ON cs.group_id = g.group_id
 LEFT JOIN cohorts co ON g.cohort_id = co.cohort_id

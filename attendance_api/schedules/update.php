@@ -8,25 +8,27 @@ $schedule_id = $data['schedule_id'] ?? 0;
 $class_id = $data['class_id'] ?? 0;
 $group_id = $data['group_id'] ?? null;
 $room_id = $data['room_id'] ?? null;
+$lecturer_id = $data['lecturer_id'] ?? null;
 $day_of_week = $data['day_of_week'] ?? '';
 $start_time = $data['start_time'] ?? '';
 $end_time = $data['end_time'] ?? '';
 $device_id = $data['device_id'] ?? 'ESP32_01';
 $semester = $data['semester'] ?? null;
+$grace_period = $data['grace_period'] ?? 15;
 
 if (!$schedule_id) {
     echo json_encode(["status" => "error", "message" => "Schedule ID required"]);
     exit;
 }
 
-if (!$class_id || !$day_of_week || !$start_time || !$end_time) {
+if (!$class_id || !$group_id || !$day_of_week || !$start_time || !$end_time) {
     echo json_encode(["status" => "error", "message" => "All fields are required"]);
     exit;
 }
 
 $group_condition = $group_id ? "group_id = '$group_id'" : "group_id IS NULL";
 
-// Check for overlapping schedule (excluding current schedule)
+// Check for overlapping schedule
 $checkQuery = "
 SELECT schedule_id FROM class_schedules 
 WHERE class_id = '$class_id' 
@@ -46,16 +48,18 @@ if (mysqli_num_rows($checkResult) > 0) {
     echo json_encode(["status" => "error", "message" => "Schedule overlaps with existing schedule for this class and group"]);
     exit;
 }
-$grace_period = isset($data['grace_period']) ? intval($data['grace_period']) : 15;
-$grace_period_value = "'$grace_period'";
+
 $room_value = $room_id ? "'$room_id'" : "NULL";
 $semester_value = $semester ? "'$semester'" : "NULL";
 $group_value = $group_id ? "'$group_id'" : "NULL";
+$lecturer_value = $lecturer_id ? "'$lecturer_id'" : "NULL";
+$grace_period_value = $grace_period ? "'$grace_period'" : "15";
 
 $query = "UPDATE class_schedules SET 
           class_id = '$class_id',
           group_id = $group_value,
           room_id = $room_value,
+          lecturer_id = $lecturer_value,
           day_of_week = '$day_of_week',
           start_time = '$start_time',
           end_time = '$end_time',
@@ -65,6 +69,7 @@ $query = "UPDATE class_schedules SET
           WHERE schedule_id = '$schedule_id'";
 
 if (mysqli_query($conn, $query)) {
+    // ─── RECALCULATE LATE STATUS FOR TODAY'S ATTENDANCE ───
     $timezone = new DateTimeZone('Asia/Jakarta');
     $todayDate = date('Y-m-d');
     $scheduleStart = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', "$todayDate $start_time", $timezone);

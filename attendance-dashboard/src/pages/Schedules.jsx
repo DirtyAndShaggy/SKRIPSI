@@ -44,6 +44,7 @@ function Schedules() {
     cohort_id: '',
     group_id: '',
     room_id: '',
+    lecturer_id: '',
     day_of_week: 'Monday',
     start_time: '08:00',
     end_time: '10:00',
@@ -197,6 +198,7 @@ const validateTimes = (start, end) => {
         cohort_id: selectedClassCohortId ? parseInt(selectedClassCohortId) : null,
         group_id: formData.group_id ? parseInt(formData.group_id) : null,
         room_id: formData.room_id ? parseInt(formData.room_id) : null,
+        lecturer_id: formData.lecturer_id ? parseInt(formData.lecturer_id) : null,  
         day_of_week: formData.day_of_week,
         start_time: formData.start_time,
         end_time: formData.end_time,
@@ -241,6 +243,7 @@ const validateTimes = (start, end) => {
       cohort_id: schedule.cohort_id ? String(schedule.cohort_id) : '',
       group_id: schedule.group_id ? String(schedule.group_id) : '',
       room_id: schedule.room_id?.toString() || '',
+      lecturer_id: schedule.lecturer_id?.toString() || '',
       day_of_week: schedule.day_of_week,
       start_time: schedule.start_time,
       end_time: schedule.end_time,
@@ -1082,6 +1085,25 @@ const validateTimes = (start, end) => {
                   {rooms.map(room => (
                     <option key={room.room_id} value={room.room_id}>
                       {room.room_code} - {room.room_name} {room.building && `(${room.building})`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* ─── LECTURER SELECTION ─── */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Lecturer
+                </label>
+                <select
+                  value={formData.lecturer_id}
+                  onChange={(e) => setFormData({...formData, lecturer_id: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Lecturer (optional)</option>
+                  {lecturers.map(lec => (
+                    <option key={lec.lecturer_id} value={lec.lecturer_id}>
+                      {lec.lecturer_code} - {lec.full_name} {lec.department ? `(${lec.department})` : ''}
                     </option>
                   ))}
                 </select>

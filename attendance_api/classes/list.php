@@ -5,11 +5,8 @@ include("../config/database.php");
 $query = "
 SELECT 
     c.*,
-    l.full_name as lecturer_name,
-    l.lecturer_code as lecturer_code,
     (SELECT COUNT(*) FROM student_classes sc WHERE sc.class_id = c.class_id AND sc.is_active = 1) as student_count
 FROM classes c
-LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
 ORDER BY c.class_id DESC
 ";
 $result = mysqli_query($conn, $query);
@@ -31,15 +28,13 @@ while ($row = mysqli_fetch_assoc($result)) {
     // ─── GET GROUPS ASSIGNED TO THIS CLASS ───
     $groupQuery = "
     SELECT 
-        g.group_id,
-        g.cohort_id,
+        gc.group_id,
+        gc.class_id,
         g.group_name,
         g.group_code,
-        g.semester,
-        g.academic_year,
+        g.cohort_id,
         cg.cohort_name,
-        cg.cohort_code,
-        (SELECT COUNT(*) FROM students s WHERE s.group_id = g.group_id) as student_count
+        cg.cohort_code
     FROM group_classes gc
     JOIN `groups` g ON gc.group_id = g.group_id
     JOIN cohorts cg ON g.cohort_id = cg.cohort_id
@@ -52,21 +47,6 @@ while ($row = mysqli_fetch_assoc($result)) {
         $assignedGroups[] = $group;
     }
     $row['assigned_groups'] = $assignedGroups;
-    
-    // Get students for this class
-    $studentQuery = "
-    SELECT s.student_id, s.nim, s.name, s.semester, s.academic_year, s.fingerprint_id
-    FROM student_classes sc
-    JOIN students s ON sc.student_id = s.student_id
-    WHERE sc.class_id = '{$row['class_id']}' AND sc.is_active = 1
-    ORDER BY s.name ASC
-    ";
-    $studentResult = mysqli_query($conn, $studentQuery);
-    $students = [];
-    while ($student = mysqli_fetch_assoc($studentResult)) {
-        $students[] = $student;
-    }
-    $row['students'] = $students;
     
     $classes[] = $row;
 }
