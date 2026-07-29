@@ -5,11 +5,14 @@ import {
   ChevronUp, BookOpen, Layers,
   Power, PowerOff, Filter,
   Calendar, Clock, User, Building,
-  UserPlus, Save, Edit3
+  UserPlus, Save, Edit3, Eye
 } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
 function Classes() {
+  const [user, setUser] = useState(null);
+  const isAdmin = user?.role === 'admin';
+  
   const [classes, setClasses] = useState([]);
   const [allSchedules, setAllSchedules] = useState([]);
   const [rooms, setRooms] = useState([]);
@@ -37,6 +40,8 @@ function Classes() {
   const [editingGraceSchedule, setEditingGraceSchedule] = useState(null);
   const [gracePeriodValue, setGracePeriodValue] = useState('');
   const [updatingGrace, setUpdatingGrace] = useState(false);
+  // ─── LECTURER CLASS IDS ───
+  const [lecturerClassIds, setLecturerClassIds] = useState(new Set());
   
   const [formData, setFormData] = useState({
     class_code: '',
@@ -52,6 +57,15 @@ function Classes() {
   const classTypes = ['Lecture', 'Lab', 'Tutorial', 'Seminar'];
   const semesterOptions = ['1', '2', '3', '4', '5', '6', '7', '8'];
 
+  // ─── GET USER ON MOUNT ───
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      const parsed = JSON.parse(userData);
+      setUser(parsed);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
     const interval = setInterval(() => loadData(false), 30000);
@@ -63,16 +77,48 @@ function Classes() {
     else setRefreshing(true);
     
     try {
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const isAdminUser = userData?.role === 'admin';
+      
+      // ─── LOAD CLASSES ───
+      let allClasses = [];
       const classesResponse = await attendanceAPI.getClasses();
       if (classesResponse.data.status === 'success') {
-        setClasses(classesResponse.data.classes);
+        allClasses = classesResponse.data.classes || [];
       }
+      
+      // ─── FILTER CLASSES FOR LECTURER ───
+      let filteredClasses = allClasses;
+      let lecturerIds = new Set();
+      
+      if (!isAdminUser) {
+        try {
+          const lecturerClassesRes = await attendanceAPI.getLecturerClasses();
+          if (lecturerClassesRes.data.status === 'success') {
+            const lecturerClasses = lecturerClassesRes.data.classes || [];
+            lecturerClasses.forEach(c => lecturerIds.add(String(c.class_id)));
+            filteredClasses = allClasses.filter(c => lecturerIds.has(String(c.class_id)));
+            setLecturerClassIds(lecturerIds);
+          }
+        } catch (err) {
+          console.error('Failed to load lecturer classes:', err);
+        }
+      }
+      
+      setClasses(filteredClasses);
 
+      // ─── LOAD SCHEDULES ───
       const schedulesResponse = await attendanceAPI.getAllSchedules();
       if (schedulesResponse.data.status === 'success') {
-        setAllSchedules(schedulesResponse.data.schedules);
+        let allSchedulesData = schedulesResponse.data.schedules || [];
+        // Filter schedules for lecturer if not admin
+        if (!isAdminUser && lecturerIds.size > 0) {
+          allSchedulesData = allSchedulesData.filter(s => lecturerIds.has(String(s.class_id)));
+        }
+        setAllSchedules(allSchedulesData);
       }
 
+      // ─── LOAD OTHER DATA ───
       const roomsResponse = await attendanceAPI.getRooms();
       if (roomsResponse.data.status === 'success') {
         setRooms(roomsResponse.data.rooms);
@@ -123,14 +169,12 @@ function Classes() {
 
     setUpdatingGrace(true);
     try {
-      // Get the schedule to update
       const schedule = allSchedules.find(s => String(s.schedule_id) === String(scheduleId));
       if (!schedule) {
         alert('Schedule not found');
         return;
       }
 
-      // Update schedule with new grace period
       const data = {
         class_id: schedule.class_id,
         group_id: schedule.group_id,
@@ -146,7 +190,6 @@ function Classes() {
       await attendanceAPI.updateSchedule(scheduleId, data);
       alert('Grace period updated successfully!');
       
-      // Refresh data
       setEditingGraceSchedule(null);
       setGracePeriodValue('');
       loadData(false);
@@ -160,6 +203,10 @@ function Classes() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isAdmin) {
+      alert('You do not have permission to add or edit classes.');
+      return;
+    }
     
     try {
       const data = {
@@ -200,6 +247,10 @@ function Classes() {
   };
 
   const handleEdit = (cls) => {
+    if (!isAdmin) {
+      alert('You do not have permission to edit classes.');
+      return;
+    }
     setEditingClass(cls);
     const assignedGroupIds = cls.assigned_groups?.map(g => String(g.group_id)) || [];
     let assignedCohortId = cls.assigned_groups?.[0]?.cohort_id ? String(cls.assigned_groups[0].cohort_id) : '';
@@ -225,6 +276,10 @@ function Classes() {
   };
 
   const handleDelete = async (classId) => {
+    if (!isAdmin) {
+      alert('You do not have permission to delete classes.');
+      return;
+    }
     if (!confirm('Are you sure you want to delete this class? This will also remove all associated schedules and enrollments.')) return;
     
     try {
@@ -238,6 +293,10 @@ function Classes() {
   };
 
   const handleToggleStatus = async (classId, currentStatus) => {
+    if (!isAdmin) {
+      alert('You do not have permission to change class status.');
+      return;
+    }
     const newStatus = currentStatus == 1 ? 0 : 1;
     const action = newStatus == 1 ? 'activate' : 'deactivate';
     
@@ -259,6 +318,7 @@ function Classes() {
   };
 
   const handleRoomToggle = (roomId) => {
+    if (!isAdmin) return;
     const id = String(roomId);
     setFormData(prev => {
       const currentRooms = prev.room_ids || [];
@@ -271,6 +331,7 @@ function Classes() {
   };
 
   const handleGroupToggle = (groupId) => {
+    if (!isAdmin) return;
     const id = String(groupId);
     setFormData(prev => {
       const currentGroups = prev.group_ids || [];
@@ -301,6 +362,7 @@ function Classes() {
     });
   };
 
+  // ─── FILTER CLASSES ───
   const filteredClasses = classes.filter(cls => {
     const searchMatch = 
       cls.class_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -698,7 +760,18 @@ function Classes() {
       <div className="flex justify-between items-start flex-wrap gap-4 mb-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Class Management</h2>
-          <p className="text-sm text-slate-500">Manage academic classes (subjects) and view schedules</p>
+          <p className="text-sm text-slate-500">
+            {isAdmin 
+              ? 'Manage academic classes (subjects) and view schedules'
+              : 'View and manage your classes and schedules'
+            }
+          </p>
+          {!isAdmin && (
+            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded mt-1">
+              <Eye className="w-3 h-3" />
+              Limited Access: Manage students & grace period only
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -723,26 +796,28 @@ function Classes() {
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
-          <button
-            onClick={() => {
-              setEditingClass(null);
-              setFormData({
-                class_code: '',
-                class_name: '',
-                class_type: 'Lecture',
-                semester_offered: '',
-                cohort_id: '',
-                is_active: 1,
-                room_ids: [],
-                group_ids: []
-              });
-              setShowForm(!showForm);
-            }}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            {showForm ? 'Cancel' : 'Add Class'}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => {
+                setEditingClass(null);
+                setFormData({
+                  class_code: '',
+                  class_name: '',
+                  class_type: 'Lecture',
+                  semester_offered: '',
+                  cohort_id: '',
+                  is_active: 1,
+                  room_ids: [],
+                  group_ids: []
+                });
+                setShowForm(!showForm);
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              {showForm ? 'Cancel' : 'Add Class'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -850,8 +925,8 @@ function Classes() {
         </div>
       )}
 
-      {/* Add/Edit Class Form */}
-      {showForm && (
+      {/* Add/Edit Class Form (Admin Only) */}
+      {isAdmin && showForm && (
         <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200 max-h-[80vh] overflow-y-auto">
           <h3 className="font-medium text-slate-700 mb-3">
             {editingClass ? 'Edit Class' : 'Add New Class'}
@@ -910,14 +985,10 @@ function Classes() {
                 <span className="text-sm text-slate-700">Inactive</span>
                 <div
                   onClick={() => setFormData({...formData, is_active: Number(formData.is_active) === 1 ? 0 : 1})}
-                  className={`relative w-12 h-6 rounded-full transition-colors cursor-pointer ${
-                    Number(formData.is_active) === 1 ? 'bg-green-500' : 'bg-red-500'
-                  }`}
+                  className={`relative w-12 h-6 rounded-full transition-colors cursor-pointer ${Number(formData.is_active) === 1 ? 'bg-green-500' : 'bg-red-500'}`}
                 >
                   <div
-                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                      Number(formData.is_active) === 1 ? 'translate-x-6' : ''
-                    }`}
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${Number(formData.is_active) === 1 ? 'translate-x-6' : ''}`}
                   />
                 </div>
                 <span className="text-sm text-slate-700">Active</span>
@@ -928,9 +999,7 @@ function Classes() {
             </div>
 
             <div className="md:col-span-3">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Rooms (select all that apply)
-              </label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Rooms (select all that apply)</label>
               {rooms.length === 0 ? (
                 <p className="text-sm text-slate-400">No rooms available. Please add rooms first in Room Management.</p>
               ) : (
@@ -944,9 +1013,7 @@ function Classes() {
                           onChange={() => handleRoomToggle(room.room_id)}
                           className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                         />
-                        <span className="text-slate-700">
-                          {room.room_code} - {room.room_name}
-                        </span>
+                        <span className="text-slate-700">{room.room_code} - {room.room_name}</span>
                       </label>
                     ))}
                   </div>
@@ -974,9 +1041,7 @@ function Classes() {
                           onChange={() => handleGroupToggle(group.group_id)}
                           className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
                         />
-                        <span className="text-slate-700">
-                          {group.group_code || group.group_name}
-                        </span>
+                        <span className="text-slate-700">{group.group_code || group.group_name}</span>
                       </label>
                     ))}
                   </div>
@@ -1001,8 +1066,8 @@ function Classes() {
         {filteredClasses.length === 0 ? (
           <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
             <BookOpen className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p className="text-lg">No classes found</p>
-            <p className="text-sm">Try adjusting your filters or add a new class</p>
+            <p className="text-lg">{isAdmin ? 'No classes found' : 'No classes assigned to you'}</p>
+            <p className="text-sm">{isAdmin ? 'Try adjusting your filters or add a new class' : 'Contact administrator to assign classes to you'}</p>
           </div>
         ) : (
           filteredClasses.map((cls) => {
@@ -1016,16 +1081,20 @@ function Classes() {
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-sm font-bold text-blue-600">{cls.class_code}</span>
                       <span className="text-lg font-semibold text-slate-800">{cls.class_name}</span>
-                      {cls.is_active == 1 ? (
-                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                          Active
-                        </span>
-                      ) : (
-                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                          Inactive
-                        </span>
+                      {isAdmin && (
+                        <>
+                          {cls.is_active == 1 ? (
+                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                              Active
+                            </span>
+                          ) : (
+                            <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                              Inactive
+                            </span>
+                          )}
+                        </>
                       )}
                       <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
                         {cls.class_type || 'Lecture'}
@@ -1038,57 +1107,48 @@ function Classes() {
                     <div className="flex flex-wrap gap-4 mt-1 text-sm text-slate-500">
                       <span>🏠 {cls.rooms?.length > 0 ? cls.rooms.map(r => r.room_code).join(', ') : 'No rooms'}</span>
                       {cls.semester_offered && <span>🎓 Semester {cls.semester_offered}</span>}
-                      
-                      {cls.assigned_groups && cls.assigned_groups.length > 0 ? (
-                        <span className="flex items-center gap-1">
-                          <span className="text-xs font-medium text-purple-600">📋 Groups:</span>
-                          {cls.assigned_groups.map((group, idx) => (
-                            <span key={idx} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs">
-                              {group.group_code || group.group_name}
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">No groups assigned</span>
-                      )}
                     </div>
                   </div>
                   
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEdit(cls);
-                      }}
-                      className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
-                      title="Edit class"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleStatus(cls.class_id, cls.is_active);
-                      }}
-                      className={`p-1 rounded transition-colors ${
-                        cls.is_active == 1 
-                          ? 'text-green-600 hover:text-green-800 hover:bg-green-50' 
-                          : 'text-red-600 hover:text-red-800 hover:bg-red-50'
-                      }`}
-                      title={cls.is_active == 1 ? 'Deactivate class' : 'Activate class'}
-                    >
-                      {cls.is_active == 1 ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(cls.class_id);
-                      }}
-                      className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
-                      title="Delete class"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(cls);
+                          }}
+                          className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
+                          title="Edit class"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleStatus(cls.class_id, cls.is_active);
+                          }}
+                          className={`p-1 rounded transition-colors ${
+                            cls.is_active == 1 
+                              ? 'text-green-600 hover:text-green-800 hover:bg-green-50' 
+                              : 'text-red-600 hover:text-red-800 hover:bg-red-50'
+                          }`}
+                          title={cls.is_active == 1 ? 'Deactivate class' : 'Activate class'}
+                        >
+                          {cls.is_active == 1 ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(cls.class_id);
+                          }}
+                          className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
+                          title="Delete class"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                     <button className="text-gray-400 hover:text-gray-600 p-1">
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
@@ -1189,12 +1249,6 @@ function Classes() {
                                       <Users className="w-3 h-3 inline mr-1" />
                                       {schedule.student_count || 0} students
                                     </span>
-                                    {schedule.lecturer_name && (
-                                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                                        <User className="w-3 h-3 inline mr-1" />
-                                        {schedule.lecturer_name}
-                                      </span>
-                                    )}
                                   </div>
                                   {schedule.device_id && (
                                     <div className="text-xs text-slate-400 mt-1">
@@ -1231,13 +1285,18 @@ function Classes() {
       {/* Legend */}
       <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
         <span>📚 <strong>Class:</strong> Academic subject entity</span>
-        <span>🏠 <strong>Rooms:</strong> Possible rooms for this class</span>
-        <span>📋 <strong>Groups:</strong> Which student groups take this class</span>
+        {isAdmin && (
+          <>
+            <span>🏠 <strong>Rooms:</strong> Possible rooms for this class</span>
+            <span>📋 <strong>Groups:</strong> Which student groups take this class</span>
+          </>
+        )}
         <span>📅 <strong>Schedule:</strong> Expand to see all schedules for this class</span>
         <span>👥 <strong>Students:</strong> Manage students per schedule</span>
         <span>⏰ <strong>Grace Period:</strong> Click the edit icon to change late tolerance</span>
-        <span>🟢 <strong>Active:</strong> Class is available for scheduling</span>
-        <span>🔴 <strong>Inactive:</strong> Class is archived</span>
+        {!isAdmin && <span>👁️ <strong>Limited Access:</strong> You can only manage students and edit grace period</span>}
+        {isAdmin && <span>🟢 <strong>Active:</strong> Class is available for scheduling</span>}
+        {isAdmin && <span>🔴 <strong>Inactive:</strong> Class is archived</span>}
       </div>
     </div>
   );
