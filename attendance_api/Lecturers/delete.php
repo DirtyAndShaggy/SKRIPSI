@@ -10,13 +10,16 @@ if (!$lecturer_id) {
     exit;
 }
 
-// Check if lecturer has classes
-$checkQuery = "SELECT COUNT(*) as total FROM classes WHERE lecturer_id = '$lecturer_id'";
+// ─── CHECK IF LECTURER HAS SCHEDULES (not classes) ───
+$checkQuery = "SELECT COUNT(*) as total FROM class_schedules WHERE lecturer_id = '$lecturer_id'";
 $checkResult = mysqli_query($conn, $checkQuery);
 $count = mysqli_fetch_assoc($checkResult);
 
 if ($count['total'] > 0) {
-    echo json_encode(["status" => "error", "message" => "Cannot delete lecturer with " . $count['total'] . " class(es) assigned"]);
+    echo json_encode([
+        "status" => "error", 
+        "message" => "Cannot delete lecturer with " . $count['total'] . " schedule(s) assigned. Please remove them from schedules first."
+    ]);
     exit;
 }
 

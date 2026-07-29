@@ -25,8 +25,14 @@ if (!$lecturerResult || mysqli_num_rows($lecturerResult) === 0) {
 $lecturer = mysqli_fetch_assoc($lecturerResult);
 $lecturer_id = $lecturer['lecturer_id'];
 
-// Get all classes taught by this lecturer
-$classQuery = "SELECT class_id FROM classes WHERE lecturer_id = '$lecturer_id'";
+// ─── GET ALL CLASSES TAUGHT BY THIS LECTURER (VIA SCHEDULES) ───
+$classQuery = "
+SELECT DISTINCT c.class_id 
+FROM classes c
+JOIN class_schedules cs ON c.class_id = cs.class_id
+WHERE cs.lecturer_id = '$lecturer_id'
+AND c.is_active = 1
+";
 $classResult = mysqli_query($conn, $classQuery);
 $classIds = [];
 while ($row = mysqli_fetch_assoc($classResult)) {

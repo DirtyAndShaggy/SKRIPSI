@@ -17,9 +17,9 @@ SELECT
     cs.start_time,
     cs.end_time,
     cs.semester AS schedule_semester,
+    cs.lecturer_id,
     c.class_code,
     c.class_name,
-    c.lecturer_id,
     l.full_name AS lecturer_name,
     g.group_name,
     g.group_code,
@@ -37,13 +37,12 @@ SELECT
 FROM attendance a
 JOIN class_schedules cs ON a.schedule_id = cs.schedule_id
 JOIN classes c ON cs.class_id = c.class_id
-LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
+LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
 LEFT JOIN `groups` g ON cs.group_id = g.group_id
 LEFT JOIN rooms r ON cs.room_id = r.room_id
 JOIN students s ON a.student_id = s.student_id
 WHERE DATE(a.timestamp) = '$date'
-AND cs.day_of_week = '$dayName'
-ORDER BY cs.schedule_id ASC, s.name ASC
+ORDER BY a.timestamp DESC, s.name ASC
 ";
 
 $result = mysqli_query($conn, $query);

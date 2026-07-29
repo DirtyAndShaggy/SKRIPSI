@@ -99,7 +99,13 @@ function TodayAttendance() {
     loadData(initialRole);
   }, []);
 
+  // ─── AUTO-REFRESH ───
   useEffect(() => {
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    
     intervalRef.current = setInterval(() => {
       if (role === 'admin') {
         loadAllAttendance(selectedDate);
@@ -170,12 +176,12 @@ function TodayAttendance() {
     }
   };
 
-  // ─── LOAD LECTURER DATA (FIXED) ───
+ // ─── LOAD LECTURER DATA ───
   const loadLecturerData = async () => {
     try {
       const response = await attendanceAPI.getLecturerClasses();
-      console.log('Lecturer classes response:', response.data); // DEBUG
-
+      console.log('📚 Lecturer classes response:', response.data); // ← ADD THIS
+      
       if (response.data.status === 'success') {
         const lecturerClasses = response.data.classes || [];
         setClasses(lecturerClasses);
@@ -201,11 +207,15 @@ function TodayAttendance() {
   const loadAllAttendance = async (date) => {
     const normalizedDate = date || getLocalDateString();
     setLoading(true);
+    setAllAttendance([]); // ← Clear previous data
+    setAttendanceData(null);
+    
     try {
       const response = await attendanceAPI.getAttendanceByDate(normalizedDate);
+      console.log('📊 Attendance by date:', normalizedDate, response.data);
+      
       if (response.data.status === 'success') {
         setAllAttendance(response.data.records || []);
-        setAttendanceData(null);
         setLastUpdated(new Date());
         setError('');
       } else {
@@ -335,9 +345,12 @@ function TodayAttendance() {
     }
   };
 
+  // ─── HANDLE DATE CHANGE ───
   const handleDateChange = async (e) => {
     const newDate = e.target.value || getLocalDateString();
     setSelectedDate(newDate);
+    setLastUpdated(new Date());
+    
     if (role === 'admin') {
       await loadAllAttendance(newDate);
     } else if (selectedScheduleId) {
