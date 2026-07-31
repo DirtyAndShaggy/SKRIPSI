@@ -13,7 +13,8 @@ import {
   Fingerprint,
   Building,
   User,
-  Layers  // ← ADD THIS
+  Layers,
+  Bell
 } from 'lucide-react';
 
 function Sidebar() {
@@ -29,6 +30,7 @@ function Sidebar() {
     { path: '/schedules', icon: Calendar, label: 'Schedules', show: isAdmin },
     { path: '/attendance', icon: CheckSquare, label: "Today's Attendance", show: true },
     { path: '/export', icon: FileText, label: 'Export Data', show: true },
+    { path: '/notifications', icon: Bell, label: 'Notifications', show: true },
     { path: '/users', icon: Users2, label: 'Users', show: isAdmin },
     { path: '/devices', icon: Fingerprint, label: 'Devices', show: isAdmin },
     { path: '/rooms', icon: Building, label: 'Rooms', show: isAdmin },

@@ -215,6 +215,26 @@ getLecturerGroups: () => {
     });
   },
 
+  // ─── NOTIFICATIONS ───
+  getAbsentStudents: (threshold = 3, classId = null) => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const params = new URLSearchParams();
+    params.append('user_id', user.user_id || 0);
+    params.append('role', user.role || 'lecturer');
+    params.append('threshold', threshold);
+    if (classId) params.append('class_id', classId);
+    return api.get(`/notifications/absent_students.php?${params.toString()}`);
+  },
+
+  sendNotifications: (data) => {
+    return api.post('/notifications/send.php', data);
+  },
+
+  getNotificationHistory: (limit = 50) => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return api.get(`/notifications/history.php?user_id=${user.user_id || 0}&role=${user.role || 'lecturer'}&limit=${limit}`);
+  },
+
 };
 
 
