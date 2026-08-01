@@ -43,45 +43,38 @@ $schedule = mysqli_fetch_assoc($scheduleResult);
 $class_id = $schedule['class_id'];
 $group_id = $schedule['group_id'];
 
-if ($schedule['day_of_week'] !== $dayName) {
-    echo json_encode([
-        "status" => "success",
-        "schedule" => $schedule,
-        "date" => $date,
-        "debug" => [
-            "group_id" => $group_id,
-            "student_count" => 0,
-            "attendance_count" => 0
-        ],
-        "summary" => [
-            "total_students" => 0,
-            "present" => 0,
-            "late" => 0,
-            "absent" => 0,
-            "attendance_rate" => 0
-        ],
-        "students" => []
-    ]);
-    mysqli_close($conn);
-    exit;
-}
-
-// ─── Get attendance records for this schedule and date only ───
+// ─── Build the roster for this schedule and mark missing attendance as Absent ───
 $attendanceQuery = "
 SELECT 
-    a.student_id,
+    cs.schedule_id,
+    cs.class_id,
+    cs.group_id,
+    cs.start_time,
+    cs.end_time,
+    cs.day_of_week,
+    cs.grace_period,
+    c.class_code,
+    c.class_name,
+    g.group_name,
+    g.group_code,
+    ss.student_id,
     s.nim,
     s.name,
     s.semester,
     s.fingerprint_id,
-    a.status,
+    COALESCE(a.status, 'Absent') AS status,
     a.timestamp,
     a.device_id,
     a.sync_status
-FROM attendance a
-JOIN students s ON a.student_id = s.student_id
-WHERE a.schedule_id = '$schedule_id'
-AND DATE(a.timestamp) = '$date'
+FROM schedule_students ss
+JOIN class_schedules cs ON ss.schedule_id = cs.schedule_id
+JOIN classes c ON cs.class_id = c.class_id
+LEFT JOIN `groups` g ON cs.group_id = g.group_id
+JOIN students s ON ss.student_id = s.student_id
+LEFT JOIN attendance a ON a.student_id = ss.student_id
+    AND a.schedule_id = ss.schedule_id
+    AND DATE(a.timestamp) = '$date'
+WHERE ss.schedule_id = '$schedule_id'
 ORDER BY s.name ASC
 ";
 

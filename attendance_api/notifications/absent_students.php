@@ -25,7 +25,8 @@ $classFilter = "";
 if ($class_id) {
     $classFilter = "AND c.class_id = '$class_id'";
 } elseif ($lecturer_id) {
-    $classFilter = "AND c.lecturer_id = '$lecturer_id'";
+    // Lecturer: only their schedules (lecturer_id on class_schedules)
+    $classFilter = "AND cs.lecturer_id = '$lecturer_id'";
 }
 
 // ─── Get students with absences exceeding threshold ───
@@ -50,7 +51,7 @@ $query = "
     JOIN schedule_students ss ON s.student_id = ss.student_id
     JOIN class_schedules cs ON ss.schedule_id = cs.schedule_id
     JOIN classes c ON cs.class_id = c.class_id
-    LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
+    LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
     LEFT JOIN attendance a ON s.student_id = a.student_id 
         AND a.schedule_id = ss.schedule_id
         AND a.status IN ('Present', 'Late')
@@ -64,6 +65,12 @@ $query = "
 ";
 
 $result = mysqli_query($conn, $query);
+
+if (!$result) {
+    echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+    exit;
+}
+
 $students = [];
 
 while ($row = mysqli_fetch_assoc($result)) {

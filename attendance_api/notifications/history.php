@@ -21,7 +21,8 @@ if ($role === 'lecturer' && $user_id) {
 
 $classFilter = "";
 if ($lecturer_id) {
-    $classFilter = "AND c.lecturer_id = '$lecturer_id'";
+    // Lecturer: filter by schedules they teach
+    $classFilter = "AND cs.lecturer_id = '$lecturer_id'";
 }
 
 // ─── Create table if it doesn't exist ───
@@ -50,11 +51,13 @@ $query = "
         s.nim,
         c.class_code,
         c.class_name,
-        l.full_name AS lecturer_name
+        l.full_name AS lecturer_name,
+        cs.schedule_id
     FROM attendance_notifications n
     JOIN students s ON n.student_id = s.student_id
     JOIN classes c ON n.class_id = c.class_id
-    LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
+    LEFT JOIN class_schedules cs ON c.class_id = cs.class_id
+    LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
     WHERE 1=1
     $classFilter
     ORDER BY n.created_at DESC
@@ -62,6 +65,12 @@ $query = "
 ";
 
 $result = mysqli_query($conn, $query);
+
+if (!$result) {
+    echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+    exit;
+}
+
 $history = [];
 while ($row = mysqli_fetch_assoc($result)) {
     $history[] = $row;

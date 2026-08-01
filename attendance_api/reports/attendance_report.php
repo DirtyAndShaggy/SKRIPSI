@@ -19,11 +19,13 @@ SELECT
     cs.start_time, 
     cs.end_time, 
     cs.day_of_week,
-    c.class_name, 
-    c.lecturer_name,
-    c.room_name
+    c.class_name,
+    l.full_name AS lecturer_name,
+    r.room_name
 FROM class_schedules cs
 JOIN classes c ON cs.class_id = c.class_id
+LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
+LEFT JOIN rooms r ON cs.room_id = r.room_id
 WHERE cs.schedule_id = '$schedule_id'
 ";
 $classResult = mysqli_query($conn, $classQuery);
@@ -35,7 +37,7 @@ if (!$classResult || mysqli_num_rows($classResult) === 0) {
 
 $classInfo = mysqli_fetch_assoc($classResult);
 
-// Get ALL enrolled students + their attendance status
+// Get all students assigned to this schedule and mark missing attendance as Absent
 $query = "
 SELECT 
     s.student_id,
@@ -54,13 +56,12 @@ SELECT
         THEN DATE_FORMAT(a.timestamp, '%H:%i:%s')
         ELSE NULL
     END as formatted_time
-FROM students s
-JOIN student_classes sc ON s.student_id = sc.student_id
-LEFT JOIN attendance a ON a.student_id = s.student_id 
+FROM schedule_students ss
+JOIN students s ON ss.student_id = s.student_id
+LEFT JOIN attendance a ON a.student_id = ss.student_id 
     AND a.schedule_id = '$schedule_id'
     AND DATE(a.timestamp) = '$date'
-WHERE sc.class_id = '{$classInfo['class_id']}'
-AND sc.is_active = 1
+WHERE ss.schedule_id = '$schedule_id'
 ORDER BY final_status ASC, 
          CASE final_status
              WHEN 'Present' THEN 1

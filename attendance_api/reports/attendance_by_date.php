@@ -25,24 +25,26 @@ SELECT
     g.group_code,
     r.room_code,
     r.room_name,
-    s.student_id,
+    ss.student_id,
     s.nim,
     s.name AS student_name,
     s.semester AS student_semester,
     s.fingerprint_id,
-    a.status,
+    COALESCE(a.status, 'Absent') AS status,
     a.timestamp,
     a.device_id,
     a.sync_status
-FROM attendance a
-JOIN class_schedules cs ON a.schedule_id = cs.schedule_id
+FROM schedule_students ss
+JOIN class_schedules cs ON ss.schedule_id = cs.schedule_id
 JOIN classes c ON cs.class_id = c.class_id
 LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
 LEFT JOIN `groups` g ON cs.group_id = g.group_id
 LEFT JOIN rooms r ON cs.room_id = r.room_id
-JOIN students s ON a.student_id = s.student_id
-WHERE DATE(a.timestamp) = '$date'
-ORDER BY a.timestamp DESC, s.name ASC
+JOIN students s ON ss.student_id = s.student_id
+LEFT JOIN attendance a ON a.student_id = ss.student_id
+    AND a.schedule_id = ss.schedule_id
+    AND DATE(a.timestamp) = '$date'
+ORDER BY c.class_name ASC, g.group_name ASC, s.name ASC
 ";
 
 $result = mysqli_query($conn, $query);

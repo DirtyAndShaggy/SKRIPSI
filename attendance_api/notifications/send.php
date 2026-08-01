@@ -6,7 +6,6 @@ header("Access-Control-Allow-Methods: POST, OPTIONS");
 require_once __DIR__ . '/../config/database.php';
 
 // ─── PHPMailer manual includes ───
-// Adjust the path based on your folder structure
 $phpmailerPath = __DIR__ . '/../vendor/phpmailer/PHPMailer-6.9.1/src/';
 
 require_once $phpmailerPath . 'PHPMailer.php';
@@ -48,7 +47,7 @@ $query = "
     JOIN schedule_students ss ON s.student_id = ss.student_id
     JOIN class_schedules cs ON ss.schedule_id = cs.schedule_id
     JOIN classes c ON cs.class_id = c.class_id
-    LEFT JOIN lecturers l ON c.lecturer_id = l.lecturer_id
+    LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
     LEFT JOIN attendance a ON s.student_id = a.student_id 
         AND a.schedule_id = ss.schedule_id
         AND a.status IN ('Present', 'Late')
@@ -57,6 +56,12 @@ $query = "
 ";
 
 $result = mysqli_query($conn, $query);
+
+if (!$result) {
+    echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+    exit;
+}
+
 $students = [];
 while ($row = mysqli_fetch_assoc($result)) {
     $enrolled = $row['total_schedules'];
@@ -86,17 +91,13 @@ while ($row = mysqli_fetch_assoc($result)) {
 // ─── Email Configuration ───
 // !!! UPDATE THESE WITH YOUR ACTUAL SMTP SETTINGS !!!
 $smtpConfig = [
-    'host' => 'smtp.gmail.com',  // or your university SMTP
+    'host' => 'smtp.gmail.com',
     'port' => 587,
-    'username' => 'your-email@gmail.com',      // YOUR EMAIL
-    'password' => 'your-app-password',          // YOUR APP PASSWORD
-    'from_email' => 'noreply@unsap.ac.id',      // Sender email
+    'username' => 'your-email@gmail.com',
+    'password' => 'your-app-password',
+    'from_email' => 'noreply@unsap.ac.id',
     'from_name' => 'Attendance System - UNSAP'
 ];
-
-// ─── Student email domain ───
-// The code will use: nim + '@student.unsap.ac.id'
-// So for NIM 220660121075 → 220660121075@student.unsap.ac.id
 
 // ─── Send emails ───
 $sentCount = 0;
@@ -108,6 +109,9 @@ foreach ($students as $student) {
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $email = $student['nim'] . '@student.unsap.ac.id';
     }
+    
+    // FOR TESTING: Force send to your email (remove this line when done testing)
+    // $email = 'your-email@gmail.com';
     
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $failedStudents[] = ['student_id' => $student['student_id'], 'email' => $email, 'reason' => 'Invalid email'];
@@ -281,7 +285,7 @@ function generateEmailBody($student) {
                 </div>
             </div>
             <div class='footer'>
-                <p>&copy; " . date('Y') . " Attendance System. All rights reserved.</p>
+                <p>&copy; " . date('Y') . " Attendance System UNSAP. All rights reserved.</p>
             </div>
         </div>
     </body>
