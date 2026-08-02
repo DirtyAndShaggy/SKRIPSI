@@ -8,6 +8,9 @@ $date = $_GET['date'] ?? date("Y-m-d");
 $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : date("Y-m-d");
 $dayName = date('l', strtotime($date));
 
+// ─── ALWAYS show attendance data, even for archived schedules ───
+// No is_archived filter - we want ALL attendance data visible
+
 $query = "
 SELECT
     cs.schedule_id,
@@ -18,6 +21,8 @@ SELECT
     cs.end_time,
     cs.semester AS schedule_semester,
     cs.lecturer_id,
+    cs.is_archived,
+    cs.is_cancelled,
     c.class_code,
     c.class_name,
     l.full_name AS lecturer_name,

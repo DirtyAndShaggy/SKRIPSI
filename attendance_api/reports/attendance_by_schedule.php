@@ -12,7 +12,7 @@ if (!$schedule_id) {
     exit;
 }
 
-// Get schedule info with class and group
+// ─── Get schedule info (including archived status) ───
 $scheduleQuery = "
 SELECT 
     cs.schedule_id,
@@ -22,6 +22,8 @@ SELECT
     cs.end_time,
     cs.day_of_week,
     cs.grace_period,
+    cs.is_archived,
+    cs.is_cancelled,
     c.class_code,
     c.class_name,
     g.group_name,
@@ -43,7 +45,7 @@ $schedule = mysqli_fetch_assoc($scheduleResult);
 $class_id = $schedule['class_id'];
 $group_id = $schedule['group_id'];
 
-// ─── Build the roster for this schedule and mark missing attendance as Absent ───
+// ─── Build the roster - ALWAYS show attendance regardless of archived status ───
 $attendanceQuery = "
 SELECT 
     cs.schedule_id,
@@ -53,6 +55,8 @@ SELECT
     cs.end_time,
     cs.day_of_week,
     cs.grace_period,
+    cs.is_archived,
+    cs.is_cancelled,
     c.class_code,
     c.class_name,
     g.group_name,
@@ -105,7 +109,8 @@ echo json_encode([
     "debug" => [
         "group_id" => $group_id,
         "student_count" => $total_students,
-        "attendance_count" => $total_students
+        "is_archived" => $schedule['is_archived'] ?? 0,
+        "is_cancelled" => $schedule['is_cancelled'] ?? 0
     ],
     "summary" => [
         "total_students" => $total_students,

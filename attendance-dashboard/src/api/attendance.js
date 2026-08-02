@@ -123,7 +123,7 @@ getLecturerGroups: () => {
   getAttendanceByDate: (date) => 
   api.get(`/reports/attendance_by_date.php?date=${date}`),
 
-  // Schedules
+    // ─── SCHEDULE ───
   getAllSchedules: () => api.get('/schedules/list.php'),
   getSchedules: (classId) => api.get(`/schedules/list.php?class_id=${classId}`),
   addSchedule: (data) => api.post('/schedules/add.php', data),
@@ -140,6 +140,39 @@ getLecturerGroups: () => {
     schedule_id: scheduleId, 
     student_ids: studentIds 
   }), 
+
+  // Postpone a class
+  postponeSchedule: (scheduleId, data) => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return api.post('/schedules/postpone.php', { 
+      schedule_id: scheduleId, 
+      user_id: user.user_id || 0,
+      ...data 
+    });
+  },
+
+  // Cancel a class
+  cancelSchedule: (scheduleId) => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return api.post('/schedules/cancel.php', { 
+      schedule_id: scheduleId, 
+      user_id: user.user_id || 0 
+    });
+  },
+
+  // Restore a cancelled class
+  restoreSchedule: (scheduleId) => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return api.post('/schedules/restore.php', { 
+      schedule_id: scheduleId, 
+      user_id: user.user_id || 0 
+    });
+  },
+
+  // Get available schedules for postponement (same class, different day)
+  getAvailableSchedulesForPostpone: (scheduleId) => {
+    return api.get(`/schedules/available_for_postpone.php?schedule_id=${scheduleId}`);
+  },
   
   // Rooms
   getRooms: () => api.get('/rooms/list.php'),

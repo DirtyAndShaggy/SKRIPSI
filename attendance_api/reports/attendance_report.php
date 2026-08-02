@@ -11,7 +11,7 @@ if (!$schedule_id) {
     exit;
 }
 
-// Get class and schedule info
+// ─── Get class and schedule info (including archived status) ───
 $classQuery = "
 SELECT 
     cs.schedule_id,
@@ -19,6 +19,8 @@ SELECT
     cs.start_time, 
     cs.end_time, 
     cs.day_of_week,
+    cs.is_archived,
+    cs.is_cancelled,
     c.class_name,
     l.full_name AS lecturer_name,
     r.room_name
@@ -37,7 +39,7 @@ if (!$classResult || mysqli_num_rows($classResult) === 0) {
 
 $classInfo = mysqli_fetch_assoc($classResult);
 
-// Get all students assigned to this schedule and mark missing attendance as Absent
+// ─── Get all students - ALWAYS show attendance regardless of archived status ───
 $query = "
 SELECT 
     s.student_id,
@@ -104,6 +106,8 @@ echo json_encode([
     "start_time" => $classInfo['start_time'],
     "end_time" => $classInfo['end_time'],
     "day_of_week" => $classInfo['day_of_week'],
+    "is_archived" => $classInfo['is_archived'] ?? 0,
+    "is_cancelled" => $classInfo['is_cancelled'] ?? 0,
     "summary" => [
         "total_students" => $total_students,
         "present" => $present_count,

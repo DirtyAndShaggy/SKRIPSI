@@ -5,7 +5,9 @@ import {
   ChevronUp, BookOpen, Layers,
   Power, PowerOff, Filter,
   Calendar, Clock, User, Building,
-  UserPlus, Save, Edit3, Eye
+  UserPlus, Save, Edit3, Eye,
+  CalendarPlus, XCircle, RotateCcw, Loader2,
+  Archive
 } from 'lucide-react';
 import attendanceAPI from '../api/attendance';
 
@@ -32,6 +34,7 @@ function Classes() {
   const [semesterFilter, setSemesterFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState('');
+  const [showArchivedFilter, setShowArchivedFilter] = useState(false); // ← NEW
   const [expandedClass, setExpandedClass] = useState(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [selectedScheduleForStudents, setSelectedScheduleForStudents] = useState(null);
@@ -40,6 +43,15 @@ function Classes() {
   const [editingGraceSchedule, setEditingGraceSchedule] = useState(null);
   const [gracePeriodValue, setGracePeriodValue] = useState('');
   const [updatingGrace, setUpdatingGrace] = useState(false);
+  
+  // ─── POSTPONE / CANCEL ───
+  const [showPostponeModal, setShowPostponeModal] = useState(false);
+  const [selectedScheduleForPostpone, setSelectedScheduleForPostpone] = useState(null);
+  const [availableSchedules, setAvailableSchedules] = useState([]);
+  const [postponeDate, setPostponeDate] = useState('');
+  const [postponeLoading, setPostponeLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  
   // ─── LECTURER CLASS IDS ───
   const [lecturerClassIds, setLecturerClassIds] = useState(new Set());
   
@@ -156,9 +168,11 @@ function Classes() {
     setSemesterFilter('');
     setStatusFilter('all');
     setGroupFilter('');
+    setShowArchivedFilter(false); // ← NEW
   };
 
-  const activeFilterCount = [searchTerm, semesterFilter, statusFilter !== 'all', groupFilter].filter(Boolean).length;
+  // ─── UPDATE activeFilterCount ───
+  const activeFilterCount = [searchTerm, semesterFilter, statusFilter !== 'all', groupFilter, showArchivedFilter].filter(Boolean).length;
 
   // ─── GRACE PERIOD UPDATE ───
   const handleUpdateGracePeriod = async (scheduleId, newGracePeriod) => {
@@ -198,6 +212,83 @@ function Classes() {
       alert('Error updating grace period. Please try again.');
     } finally {
       setUpdatingGrace(false);
+    }
+  };
+
+  // ─── POSTPONE CLASS ───
+  const handleOpenPostponeModal = async (schedule) => {
+    setSelectedScheduleForPostpone(schedule);
+    setPostponeDate('');
+    setPostponeLoading(true);
+    
+    try {
+      const res = await attendanceAPI.getAvailableSchedulesForPostpone(schedule.schedule_id);
+      if (res.data.status === 'success') {
+        setAvailableSchedules(res.data.available_schedules || []);
+      }
+    } catch (err) {
+      console.error('Failed to load available schedules:', err);
+    } finally {
+      setPostponeLoading(false);
+      setShowPostponeModal(true);
+    }
+  };
+
+  const handlePostpone = async () => {
+    if (!postponeDate) {
+      alert('Please select a date to postpone the class');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const data = { postpone_date: postponeDate };
+      
+      await attendanceAPI.postponeSchedule(selectedScheduleForPostpone.schedule_id, data);
+      alert('Class postponed successfully!');
+      setShowPostponeModal(false);
+      setSelectedScheduleForPostpone(null);
+      setPostponeDate('');
+      loadData(false);
+    } catch (err) {
+      console.error('Failed to postpone:', err);
+      alert('Error postponing class. Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ─── CANCEL CLASS ───
+  const handleCancelSchedule = async (scheduleId) => {
+    if (!confirm('Are you sure you want to cancel this class for this week? Students will not be able to scan in.')) return;
+    
+    setActionLoading(true);
+    try {
+      await attendanceAPI.cancelSchedule(scheduleId);
+      alert('Class cancelled successfully!');
+      loadData(false);
+    } catch (err) {
+      console.error('Failed to cancel schedule:', err);
+      alert('Error cancelling class. Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ─── RESTORE CLASS ───
+  const handleRestoreSchedule = async (scheduleId) => {
+    if (!confirm('Are you sure you want to restore this cancelled class?')) return;
+    
+    setActionLoading(true);
+    try {
+      await attendanceAPI.restoreSchedule(scheduleId);
+      alert('Class restored successfully!');
+      loadData(false);
+    } catch (err) {
+      console.error('Failed to restore schedule:', err);
+      alert('Error restoring class. Please try again.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -383,8 +474,16 @@ function Classes() {
     return searchMatch && semesterMatch && statusMatch && groupMatch;
   });
 
+  // ─── GET CLASS SCHEDULES WITH ARCHIVED FILTER ───
   const getClassSchedules = (classId) => {
-    return allSchedules.filter(s => String(s.class_id) === String(classId));
+    let schedules = allSchedules.filter(s => String(s.class_id) === String(classId));
+    
+    // Filter out archived schedules unless showArchivedFilter is true
+    if (!showArchivedFilter) {
+      schedules = schedules.filter(s => s.is_archived != 1);
+    }
+    
+    return schedules;
   };
 
   const filterGroups = allGroups.filter(g => g.is_active);
@@ -744,6 +843,105 @@ function Classes() {
     );
   };
 
+  // ─── POSTPONE MODAL ───
+  const PostponeModal = () => {
+    if (!showPostponeModal || !selectedScheduleForPostpone) return null;
+
+    // Calculate date limits
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const maxDate = new Date(today);
+    maxDate.setDate(today.getDate() + 7);
+    const maxDateStr = maxDate.toISOString().split('T')[0];
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[80vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-slate-800">Postpone Class</h3>
+            <button
+              onClick={() => {
+                setShowPostponeModal(false);
+                setSelectedScheduleForPostpone(null);
+                setAvailableSchedules([]);
+                setPostponeDate('');
+              }}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-700">
+              <strong>Class:</strong> {selectedScheduleForPostpone?.class_code} - {selectedScheduleForPostpone?.class_name}
+            </p>
+            <p className="text-sm text-blue-700 mt-1">
+              <strong>Original Schedule:</strong> {selectedScheduleForPostpone?.day_of_week} {selectedScheduleForPostpone?.start_time} - {selectedScheduleForPostpone?.end_time}
+            </p>
+            <p className="text-xs text-blue-500 mt-1">Postponing will cancel the original class for this week only.</p>
+            <p className="text-xs text-yellow-600 mt-1">⚠️ You can only postpone to a date within the next 7 days.</p>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Select New Date for This Class
+              </label>
+              <input
+                type="date"
+                value={postponeDate}
+                onChange={(e) => setPostponeDate(e.target.value)}
+                min={todayStr}
+                max={maxDateStr}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                You can only postpone to a date within the next 7 days.
+              </p>
+            </div>
+
+            {/* ─── Show available schedules as info ─── */}
+            {availableSchedules.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs text-slate-500 mb-1">Other schedules for this class:</p>
+                <div className="flex flex-wrap gap-1">
+                  {availableSchedules.map(s => (
+                    <span key={s.schedule_id} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                      {s.day_of_week} {s.start_time}-{s.end_time}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">⚠️ Postponing to a date that conflicts with existing schedules may cause issues.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 mt-6 pt-4 border-t">
+            <button
+              onClick={handlePostpone}
+              disabled={actionLoading || !postponeDate}
+              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Postpone Class'}
+            </button>
+            <button
+              onClick={() => {
+                setShowPostponeModal(false);
+                setSelectedScheduleForPostpone(null);
+                setAvailableSchedules([]);
+                setPostponeDate('');
+              }}
+              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -769,7 +967,7 @@ function Classes() {
           {!isAdmin && (
             <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded mt-1">
               <Eye className="w-3 h-3" />
-              Limited Access: Manage students & grace period only
+              Limited Access: Manage students, grace period & schedule adjustments
             </span>
           )}
         </div>
@@ -835,7 +1033,7 @@ function Classes() {
       {/* ─── FILTERS SECTION ─── */}
       {showFilters && (
         <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
               <input
@@ -883,6 +1081,21 @@ function Classes() {
                 ))}
               </select>
             </div>
+            {/* ─── SHOW ARCHIVED TOGGLE ─── */}
+            <div className="flex items-center">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showArchivedFilter}
+                  onChange={(e) => setShowArchivedFilter(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-700 flex items-center gap-1">
+                  <Archive className="w-4 h-4 text-gray-500" />
+                  Show Archived
+                </span>
+              </label>
+            </div>
           </div>
           <div className="flex justify-end mt-3">
             <button
@@ -918,6 +1131,12 @@ function Classes() {
                 <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
                   Group: {filterGroups.find(g => g.group_id == groupFilter)?.group_code || groupFilter}
                   <button onClick={() => setGroupFilter('')} className="hover:text-blue-900">×</button>
+                </span>
+              )}
+              {showArchivedFilter && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  Archived: Showing
+                  <button onClick={() => setShowArchivedFilter(false)} className="hover:text-blue-900">×</button>
                 </span>
               )}
             </div>
@@ -1155,7 +1374,7 @@ function Classes() {
                   </div>
                 </div>
 
-                {/* Expanded Content - Schedules List with Grace Period Edit */}
+                {/* Expanded Content - Schedules List */}
                 {isExpanded && (
                   <div className="px-4 pb-4 border-t border-gray-100 pt-3">
                     {classSchedules.length === 0 ? (
@@ -1170,69 +1389,84 @@ function Classes() {
                           const group = allGroups.find(g => String(g.group_id) === String(schedule.group_id));
                           const room = rooms.find(r => String(r.room_id) === String(schedule.room_id));
                           const isEditingGrace = editingGraceSchedule === schedule.schedule_id;
+                          const isCancelled = schedule.is_cancelled == 1;
 
                           return (
-                            <div key={schedule.schedule_id} className="bg-gray-50 rounded-lg border p-3 hover:shadow-sm transition-shadow">
+                            <div key={schedule.schedule_id} className={`bg-gray-50 rounded-lg border p-3 hover:shadow-sm transition-shadow ${isCancelled ? 'border-red-200 bg-red-50' : ''}`}>
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-medium text-slate-800 text-sm">
+                                    <span className={`font-medium text-sm ${isCancelled ? 'text-red-600 line-through' : 'text-slate-800'}`}>
                                       {schedule.day_of_week}
                                     </span>
-                                    <span className="text-sm text-slate-600">
+                                    <span className={`text-sm ${isCancelled ? 'text-red-500' : 'text-slate-600'}`}>
                                       <Clock className="w-3.5 h-3.5 inline mr-1" />
                                       {schedule.start_time} - {schedule.end_time}
                                     </span>
-                                    {/* ─── GRACE PERIOD DISPLAY / EDIT ─── */}
-                                    {isEditingGrace ? (
-                                      <div className="flex items-center gap-1">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max="120"
-                                          value={gracePeriodValue}
-                                          onChange={(e) => setGracePeriodValue(e.target.value)}
-                                          className="w-16 border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                          autoFocus
-                                        />
-                                        <span className="text-xs text-slate-500">min</span>
-                                        <button
-                                          onClick={() => {
-                                            if (gracePeriodValue) {
-                                              handleUpdateGracePeriod(schedule.schedule_id, gracePeriodValue);
-                                            }
-                                          }}
-                                          disabled={updatingGrace}
-                                          className="text-green-600 hover:text-green-800 p-0.5"
-                                          title="Save grace period"
-                                        >
-                                          <Save className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setEditingGraceSchedule(null);
-                                            setGracePeriodValue('');
-                                          }}
-                                          className="text-red-500 hover:text-red-700 p-0.5"
-                                          title="Cancel"
-                                        >
-                                          <X className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <span className="flex items-center gap-1 text-xs bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">
-                                        ⏰ Grace: {schedule.grace_period || 15}m
-                                        <button
-                                          onClick={() => {
-                                            setEditingGraceSchedule(schedule.schedule_id);
-                                            setGracePeriodValue(String(schedule.grace_period || 15));
-                                          }}
-                                          className="text-yellow-600 hover:text-yellow-800"
-                                          title="Edit grace period"
-                                        >
-                                          <Edit3 className="w-3 h-3" />
-                                        </button>
+                                    {/* ─── CANCELLED/POSTPONED BADGE ─── */}
+                                    {isCancelled && (
+                                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-medium">
+                                        {schedule.postponed_to_schedule_id ? '🔄 Postponed' : '❌ Cancelled'}
                                       </span>
+                                    )}
+                                    {/* ─── ARCHIVED BADGE ─── */}
+                                    {schedule.is_archived == 1 && (
+                                      <span className="text-xs bg-gray-300 text-gray-600 px-2 py-0.5 rounded font-medium">
+                                        📦 Archived (Postponed copy)
+                                      </span>
+                                    )}
+                                    {/* ─── GRACE PERIOD DISPLAY / EDIT ─── */}
+                                    {!isCancelled && (
+                                      isEditingGrace ? (
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="120"
+                                            value={gracePeriodValue}
+                                            onChange={(e) => setGracePeriodValue(e.target.value)}
+                                            className="w-16 border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            autoFocus
+                                          />
+                                          <span className="text-xs text-slate-500">min</span>
+                                          <button
+                                            onClick={() => {
+                                              if (gracePeriodValue) {
+                                                handleUpdateGracePeriod(schedule.schedule_id, gracePeriodValue);
+                                              }
+                                            }}
+                                            disabled={updatingGrace}
+                                            className="text-green-600 hover:text-green-800 p-0.5"
+                                            title="Save grace period"
+                                          >
+                                            <Save className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setEditingGraceSchedule(null);
+                                              setGracePeriodValue('');
+                                            }}
+                                            className="text-red-500 hover:text-red-700 p-0.5"
+                                            title="Cancel"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="flex items-center gap-1 text-xs bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">
+                                          ⏰ Grace: {schedule.grace_period || 15}m
+                                          <button
+                                            onClick={() => {
+                                              setEditingGraceSchedule(schedule.schedule_id);
+                                              setGracePeriodValue(String(schedule.grace_period || 15));
+                                            }}
+                                            className="text-yellow-600 hover:text-yellow-800"
+                                            title="Edit grace period"
+                                          >
+                                            <Edit3 className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      )
                                     )}
                                     {group && (
                                       <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
@@ -1249,6 +1483,12 @@ function Classes() {
                                       <Users className="w-3 h-3 inline mr-1" />
                                       {schedule.student_count || 0} students
                                     </span>
+                                    {schedule.lecturer_name && (
+                                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                                        <User className="w-3 h-3 inline mr-1" />
+                                        {schedule.lecturer_name}
+                                      </span>
+                                    )}
                                   </div>
                                   {schedule.device_id && (
                                     <div className="text-xs text-slate-400 mt-1">
@@ -1257,6 +1497,40 @@ function Classes() {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                                  {/* ─── SCHEDULE ACTION BUTTONS (Lecturer only) ─── */}
+                                  {!isAdmin && (
+                                    <>
+                                      {isCancelled ? (
+                                        // ─── SHOW RESTORE BUTTON ───
+                                        <button
+                                          onClick={() => handleRestoreSchedule(schedule.schedule_id)}
+                                          className="text-green-600 hover:text-green-800 p-1 hover:bg-green-50 rounded transition-colors"
+                                          title="Restore class"
+                                        >
+                                          <RotateCcw className="w-4 h-4" />
+                                        </button>
+                                      ) : (
+                                        // ─── SHOW POSTPONE & CANCEL ───
+                                        <>
+                                          <button
+                                            onClick={() => handleOpenPostponeModal(schedule)}
+                                            className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded transition-colors"
+                                            title="Postpone class"
+                                          >
+                                            <CalendarPlus className="w-4 h-4" />
+                                          </button>
+                                          <button
+                                            onClick={() => handleCancelSchedule(schedule.schedule_id)}
+                                            className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded transition-colors"
+                                            title="Cancel class"
+                                          >
+                                            <XCircle className="w-4 h-4" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </>
+                                  )}
+                                  {/* ─── MANAGE STUDENTS (always visible) ─── */}
                                   <button
                                     onClick={() => handleManageStudents(schedule)}
                                     className="text-green-600 hover:text-green-800 p-1 hover:bg-green-50 rounded transition-colors"
@@ -1282,6 +1556,9 @@ function Classes() {
       {/* Student Assignment Modal */}
       <StudentAssignmentModal />
 
+      {/* Postpone Modal */}
+      <PostponeModal />
+
       {/* Legend */}
       <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
         <span>📚 <strong>Class:</strong> Academic subject entity</span>
@@ -1294,9 +1571,17 @@ function Classes() {
         <span>📅 <strong>Schedule:</strong> Expand to see all schedules for this class</span>
         <span>👥 <strong>Students:</strong> Manage students per schedule</span>
         <span>⏰ <strong>Grace Period:</strong> Click the edit icon to change late tolerance</span>
-        {!isAdmin && <span>👁️ <strong>Limited Access:</strong> You can only manage students and edit grace period</span>}
+        {!isAdmin && (
+          <>
+            <span>🔄 <strong>Postpone:</strong> Move class to another date for this week only</span>
+            <span>❌ <strong>Cancel:</strong> Cancel class for this week (no attendance)</span>
+            <span>↩️ <strong>Restore:</strong> Restore a cancelled/postponed class</span>
+            <span>👁️ <strong>Limited Access:</strong> You can manage students, edit grace period, postpone, and cancel classes</span>
+          </>
+        )}
         {isAdmin && <span>🟢 <strong>Active:</strong> Class is available for scheduling</span>}
         {isAdmin && <span>🔴 <strong>Inactive:</strong> Class is archived</span>}
+        <span>📦 <strong>Archived:</strong> Postponed copies that have passed their date</span>
       </div>
     </div>
   );

@@ -28,12 +28,13 @@ if (!$class_id || !$group_id || !$day_of_week || !$start_time || !$end_time) {
 
 $group_condition = $group_id ? "group_id = '$group_id'" : "group_id IS NULL";
 
-// Check for overlapping schedule
+// ─── Check for overlapping schedule (excluding archived) ───
 $checkQuery = "
 SELECT schedule_id FROM class_schedules 
 WHERE class_id = '$class_id' 
 AND day_of_week = '$day_of_week'
 AND schedule_id != '$schedule_id'
+AND is_archived = 0
 AND $group_condition
 AND (
     ('$start_time' BETWEEN start_time AND end_time) OR
@@ -69,7 +70,7 @@ $query = "UPDATE class_schedules SET
           WHERE schedule_id = '$schedule_id'";
 
 if (mysqli_query($conn, $query)) {
-    // ─── RECALCULATE LATE STATUS FOR TODAY'S ATTENDANCE ───
+    // ─── RECALCULATE LATE STATUS ───
     $timezone = new DateTimeZone('Asia/Jakarta');
     $todayDate = date('Y-m-d');
     $scheduleStart = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', "$todayDate $start_time", $timezone);

@@ -12,8 +12,8 @@ $role = $_GET['role'] ?? 'admin';
 
 // Get lecturer_id if user is a lecturer
 $lecturer_id = null;
-$classIds = []; // ← DECLARE EARLY
-$classIdList = ''; // ← DECLARE EARLY
+$classIds = [];
+$classIdList = '';
 
 if ($role === 'lecturer' && $user_id) {
     $lecturerQuery = "SELECT lecturer_id FROM lecturers WHERE user_id = '$user_id'";
@@ -56,12 +56,12 @@ try {
             $totalCohorts = (int)$row['count'];
         }
         
-        $scheduleCount = mysqli_query($conn, "SELECT COUNT(*) as count FROM class_schedules");
+        $scheduleCount = mysqli_query($conn, "SELECT COUNT(*) as count FROM class_schedules WHERE is_archived = 0");
         if ($scheduleCount && $row = mysqli_fetch_assoc($scheduleCount)) {
             $totalSchedules = (int)$row['count'];
         }
         
-        // Today's attendance
+        // Today's attendance - INCLUDE ALL attendance regardless of archived status
         $todayDate = date('Y-m-d');
         $todayQuery = "
             SELECT 
@@ -95,7 +95,6 @@ try {
                 $classIds[] = $row['class_id'];
             }
             
-            // ─── BUILD classIdList HERE ───
             if (!empty($classIds)) {
                 $classIdList = implode(',', $classIds);
                 
@@ -142,19 +141,20 @@ try {
                     $totalCohorts = (int)$row['count'];
                 }
                 
-                // Schedules
+                // Schedules (only non-archived for the count)
                 $scheduleQuery = "
                     SELECT COUNT(*) as count
                     FROM class_schedules cs
                     WHERE cs.class_id IN ($classIdList)
                     AND cs.lecturer_id = '$lecturer_id'
+                    AND cs.is_archived = 0
                 ";
                 $scheduleResult = mysqli_query($conn, $scheduleQuery);
                 if ($scheduleResult && $row = mysqli_fetch_assoc($scheduleResult)) {
                     $totalSchedules = (int)$row['count'];
                 }
                 
-                // Today's attendance
+                // Today's attendance - INCLUDE ALL attendance regardless of archived status
                 $todayDate = date('Y-m-d');
                 $todayQuery = "
                     SELECT 
