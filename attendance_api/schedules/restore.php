@@ -37,6 +37,12 @@ if ($schedule['lecturer_id'] != $lecturer_id) {
     exit;
 }
 
+// Check if already restored
+if ($schedule['is_cancelled'] == 0 && !$schedule['postponed_to_schedule_id']) {
+    echo json_encode(["status" => "error", "message" => "This schedule is already active"]);
+    exit;
+}
+
 // ─── Check if this schedule has a postponed copy ───
 $postponedCopyId = $schedule['postponed_to_schedule_id'] ?? null;
 
@@ -61,12 +67,10 @@ try {
     
     // ─── 2. Archive the postponed copy ───
     if ($postponedCopyId) {
-        // Check if the copy exists
         $checkCopy = "SELECT schedule_id FROM class_schedules WHERE schedule_id = '$postponedCopyId'";
         $copyResult = mysqli_query($conn, $checkCopy);
         
         if (mysqli_num_rows($copyResult) > 0) {
-            // Archive the copy
             $archiveCopy = "
                 UPDATE class_schedules 
                 SET is_archived = 1,
@@ -79,13 +83,9 @@ try {
             if (!mysqli_query($conn, $archiveCopy)) {
                 throw new Exception("Failed to archive postponed copy: " . mysqli_error($conn));
             }
-        } else {
-            // If the copy doesn't exist, just log it
-            error_log("Restore: Postponed copy ID $postponedCopyId not found, skipping.");
         }
     }
     
-    // ─── 3. Commit transaction ───
     mysqli_commit($conn);
     
     echo json_encode([

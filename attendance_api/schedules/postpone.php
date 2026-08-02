@@ -81,18 +81,20 @@ if ($postpone_date) {
 // ─── Handle postponement ───
 if ($postpone_schedule_id) {
     // Postpone to existing schedule on another day
-    $targetQuery = "SELECT * FROM class_schedules WHERE schedule_id = '$postpone_schedule_id' AND lecturer_id = '$lecturer_id'";
+    // Check target is active
+    $targetQuery = "
+        SELECT * FROM class_schedules 
+        WHERE schedule_id = '$postpone_schedule_id' 
+        AND lecturer_id = '$lecturer_id'
+        AND is_cancelled = 0
+        AND is_archived = 0
+    ";
     $targetResult = mysqli_query($conn, $targetQuery);
     if (!$targetResult || mysqli_num_rows($targetResult) === 0) {
-        echo json_encode(["status" => "error", "message" => "Target schedule not found or not owned by you"]);
+        echo json_encode(["status" => "error", "message" => "Target schedule not found or not available"]);
         exit;
     }
     $targetSchedule = mysqli_fetch_assoc($targetResult);
-    
-    if ($targetSchedule['is_cancelled'] == 1) {
-        echo json_encode(["status" => "error", "message" => "Target schedule is cancelled"]);
-        exit;
-    }
     
     // Create a postponed session
     $postponeQuery = "
@@ -125,6 +127,15 @@ if ($postpone_schedule_id) {
         exit;
     }
     $newScheduleId = mysqli_insert_id($conn);
+    
+    // Copy student assignments from original to new schedule
+    $copyStudentsQuery = "
+        INSERT INTO schedule_students (schedule_id, student_id)
+        SELECT '$newScheduleId', student_id
+        FROM schedule_students
+        WHERE schedule_id = '$schedule_id'
+    ";
+    mysqli_query($conn, $copyStudentsQuery);
     
     $updateQuery = "
         UPDATE class_schedules 
@@ -202,6 +213,15 @@ if ($postpone_schedule_id) {
         exit;
     }
     $newScheduleId = mysqli_insert_id($conn);
+    
+    // Copy student assignments
+    $copyStudentsQuery = "
+        INSERT INTO schedule_students (schedule_id, student_id)
+        SELECT '$newScheduleId', student_id
+        FROM schedule_students
+        WHERE schedule_id = '$schedule_id'
+    ";
+    mysqli_query($conn, $copyStudentsQuery);
     
     $updateQuery = "
         UPDATE class_schedules 

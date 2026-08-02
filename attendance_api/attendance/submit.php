@@ -102,6 +102,8 @@ JOIN classes c ON cs.class_id = c.class_id
 WHERE cs.device_id = '$device_id'
 AND cs.day_of_week = '$today'
 AND '$currentTime' BETWEEN cs.start_time AND cs.end_time
+AND cs.is_cancelled = 0
+AND cs.is_archived = 0
 LIMIT 1
 ";
 
@@ -132,8 +134,7 @@ $schedule_start = $schedule['start_time'];
 $grace_period = $schedule['grace_period'] ?? 15;
 
 /* -----------------------------
-   3. ✅ Check if Student is ASSIGNED to this Schedule
-   (This is the ONLY check you need)
+   3. Check if Student is ASSIGNED to this Schedule
 ----------------------------- */
 $assignmentQuery = "
 SELECT id 
