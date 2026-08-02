@@ -314,11 +314,10 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
             // Check permission for lecturer
             if ($role === 'lecturer' && $lecturer_id) {
                 $checkQuery = "
-                    SELECT c.class_id 
-                    FROM classes c
-                    JOIN class_schedules cs ON c.class_id = cs.class_id
+                    SELECT cs.class_id 
+                    FROM class_schedules cs
                     WHERE cs.schedule_id = '$schedule_id' 
-                    AND c.lecturer_id = '$lecturer_id'
+                    AND cs.lecturer_id = '$lecturer_id'
                 ";
                 $checkResult = mysqli_query($conn, $checkQuery);
                 if (!$checkResult || mysqli_num_rows($checkResult) === 0) {
@@ -391,7 +390,7 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
             // Check permission for lecturer
             if ($role === 'lecturer' && $lecturer_id) {
                 // Get all class_ids for this lecturer
-                $classQuery = "SELECT class_id FROM classes WHERE lecturer_id = '$lecturer_id'";
+                $classQuery = "SELECT DISTINCT class_id FROM class_schedules WHERE lecturer_id = '$lecturer_id'";
                 $classResult = mysqli_query($conn, $classQuery);
                 $classIds = [];
                 while ($row = mysqli_fetch_assoc($classResult)) {
@@ -472,9 +471,8 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
             if ($role === 'lecturer' && $lecturer_id) {
                 // Find which class this group is enrolled in for the given semester
                 $groupClassQuery = "
-                    SELECT DISTINCT c.class_id, c.lecturer_id
+                    SELECT DISTINCT cs.class_id, cs.lecturer_id
                     FROM class_schedules cs
-                    JOIN classes c ON cs.class_id = c.class_id
                     WHERE cs.group_id = '$groupId' 
                     AND cs.semester = '$semester'
                     LIMIT 1
@@ -586,9 +584,8 @@ function fetchAttendanceData($conn, $export_type, $schedule_id, $class_id, $coho
                     SELECT DISTINCT g.cohort_id
                     FROM `groups` g
                     JOIN class_schedules cs ON g.group_id = cs.group_id
-                    JOIN classes c ON cs.class_id = c.class_id
                     WHERE g.cohort_id = '$cohort_id'
-                    AND c.lecturer_id = '$lecturer_id'
+                    AND cs.lecturer_id = '$lecturer_id'
                     LIMIT 1
                 ";
                 $checkResult = mysqli_query($conn, $checkQuery);
