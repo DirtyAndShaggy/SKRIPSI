@@ -8,8 +8,29 @@ $date = $_GET['date'] ?? date("Y-m-d");
 $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : date("Y-m-d");
 $dayName = date('l', strtotime($date));
 
-// ─── ALWAYS show attendance data, even for archived schedules ───
-// No is_archived filter - we want ALL attendance data visible
+// ─── ADD FILTERS ───
+$cohort_id = $_GET['cohort_id'] ?? null;
+$group_id = $_GET['group_id'] ?? null;
+$room_id = $_GET['room_id'] ?? null;
+$class_id = $_GET['class_id'] ?? null;
+$semester = $_GET['semester'] ?? null;
+
+$extraFilters = "";
+if ($cohort_id) {
+    $extraFilters .= " AND g.cohort_id = '$cohort_id'";
+}
+if ($group_id) {
+    $extraFilters .= " AND g.group_id = '$group_id'";
+}
+if ($room_id) {
+    $extraFilters .= " AND r.room_id = '$room_id'";
+}
+if ($class_id) {
+    $extraFilters .= " AND c.class_id = '$class_id'";
+}
+if ($semester) {
+    $extraFilters .= " AND cs.semester = '$semester'";
+}
 
 $query = "
 SELECT
@@ -28,6 +49,10 @@ SELECT
     l.full_name AS lecturer_name,
     g.group_name,
     g.group_code,
+    co.cohort_name,
+    co.cohort_id,
+    co.cohort_code,
+    r.room_id,
     r.room_code,
     r.room_name,
     ss.student_id,
@@ -44,11 +69,14 @@ JOIN class_schedules cs ON ss.schedule_id = cs.schedule_id
 JOIN classes c ON cs.class_id = c.class_id
 LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
 LEFT JOIN `groups` g ON cs.group_id = g.group_id
+LEFT JOIN cohorts co ON g.cohort_id = co.cohort_id
 LEFT JOIN rooms r ON cs.room_id = r.room_id
 JOIN students s ON ss.student_id = s.student_id
 LEFT JOIN attendance a ON a.student_id = ss.student_id
     AND a.schedule_id = ss.schedule_id
     AND DATE(a.timestamp) = '$date'
+WHERE 1=1
+$extraFilters
 ORDER BY c.class_name ASC, g.group_name ASC, s.name ASC
 ";
 
@@ -77,6 +105,13 @@ echo json_encode([
     "status" => "success",
     "date" => $date,
     "day_of_week" => $dayName,
+    "filters" => [
+        "cohort_id" => $cohort_id,
+        "group_id" => $group_id,
+        "room_id" => $room_id,
+        "class_id" => $class_id,
+        "semester" => $semester
+    ],
     "summary" => [
         "total" => $total,
         "present" => $present_count,

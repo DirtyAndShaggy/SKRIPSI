@@ -168,7 +168,17 @@ const validateTimes = (start, end) => {
 
       const schedulesResponse = await attendanceAPI.getAllSchedules();
       if (schedulesResponse.data.status === 'success') {
-        setSchedules(schedulesResponse.data.schedules);
+        const normalizedSchedules = schedulesResponse.data.schedules.map(schedule => ({
+          ...schedule,
+          class_id: schedule.class_id != null ? String(schedule.class_id) : '',
+          cohort_id: schedule.cohort_id != null ? String(schedule.cohort_id) : '',
+          group_id: schedule.group_id != null ? String(schedule.group_id) : '',
+          room_id: schedule.room_id != null ? String(schedule.room_id) : '',
+          semester: schedule.semester != null ? String(schedule.semester) : '',
+          lecturer_id: schedule.lecturer_id != null ? String(schedule.lecturer_id) : '',
+          schedule_id: schedule.schedule_id != null ? String(schedule.schedule_id) : ''
+        }));
+        setSchedules(normalizedSchedules);
       }
       
       setLastUpdated(new Date());
@@ -322,7 +332,7 @@ const validateTimes = (start, end) => {
     }
     
     if (filters.class_id) {
-      filtered = filtered.filter(s => s.class_id === parseInt(filters.class_id));
+      filtered = filtered.filter(s => String(s.class_id) === String(filters.class_id));
     }
     if (filters.cohort_id) {
       filtered = filtered.filter(s => String(s.cohort_id) === String(filters.cohort_id));
@@ -334,10 +344,10 @@ const validateTimes = (start, end) => {
       filtered = filtered.filter(s => s.day_of_week === filters.day_of_week);
     }
     if (filters.room_id) {
-      filtered = filtered.filter(s => s.room_id === parseInt(filters.room_id));
+      filtered = filtered.filter(s => String(s.room_id) === String(filters.room_id));
     }
     if (filters.semester) {
-      filtered = filtered.filter(s => s.semester === filters.semester);
+      filtered = filtered.filter(s => String(s.semester) === String(filters.semester));
     }
     
     return filtered;
