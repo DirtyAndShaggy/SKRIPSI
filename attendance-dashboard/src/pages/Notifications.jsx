@@ -43,6 +43,7 @@ function Notifications() {
   const [classFilter, setClassFilter] = useState('');
   const [classes, setClasses] = useState([]);
   const [expandedStudent, setExpandedStudent] = useState(null);
+  const [testMode, setTestMode] = useState(false);
 
   // ─── LOAD CLASSES FOR FILTER ───
   useEffect(() => {
@@ -128,27 +129,52 @@ function Notifications() {
       return;
     }
     
-    if (!confirm(`Send notifications to ${selectedStudents.length} student(s)?`)) return;
+    const mode = testMode ? 'TEST (no emails)' : 'LIVE (sending emails)';
+    if (!confirm(`Send ${mode} notifications to ${selectedStudents.length} student(s)?`)) return;
     
     setSending(true);
     setError('');
     setSuccessMessage('');
     
     try {
-      const response = await attendanceAPI.sendNotifications({
-        student_ids: selectedStudents,
-        threshold: threshold
-      });
+      let response;
       
-      if (response.data.status === 'success') {
-        setSuccessMessage(`✅ Sent ${response.data.sent} notifications. ${response.data.failed} failed.`);
-        // Refresh data
-        await loadData(false);
-        setSelectedStudents([]);
-        setSelectAll(false);
+      if (testMode) {
+        // ─── TEST MODE: Just preview what would be sent ───
+        const previewStudents = absentStudents.filter(s => 
+          selectedStudents.includes(s.student_id)
+        );
+        
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        setSuccessMessage(
+          `🧪 TEST MODE: Would send ${previewStudents.length} notifications. ` +
+          `No emails were actually sent.`
+        );
+        
+        // Log for debugging
+        console.log('📧 TEST MODE - Students that would be notified:', previewStudents);
+        
+        response = { data: { status: 'success', sent: previewStudents.length, failed: 0 } };
       } else {
-        setError(response.data.message || 'Failed to send notifications');
+        // ─── LIVE MODE: Actually send emails ───
+        response = await attendanceAPI.sendNotifications({
+          student_ids: selectedStudents,
+          threshold: threshold
+        });
+        
+        if (response.data.status === 'success') {
+          setSuccessMessage(`✅ Sent ${response.data.sent} notifications. ${response.data.failed} failed.`);
+          // Refresh data to update notification status
+          await loadData(false);
+          setSelectedStudents([]);
+          setSelectAll(false);
+        } else {
+          setError(response.data.message || 'Failed to send notifications');
+        }
       }
+      
     } catch (err) {
       console.error('Failed to send notifications:', err);
       setError('Failed to send notifications. Please try again.');
@@ -330,6 +356,20 @@ function Notifications() {
             </div>
             
             <div className="flex items-center gap-3 flex-wrap">
+              {/* ─── TEST MODE TOGGLE ─── */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={testMode}
+                  onChange={(e) => setTestMode(e.target.checked)}
+                  className="w-4 h-4 text-yellow-600 rounded focus:ring-yellow-500"
+                />
+                <span className="text-sm text-slate-700">🧪 Test Mode</span>
+                <span className="text-xs text-slate-400">
+                  {testMode ? '(Preview only, no emails)' : '(Send real emails)'}
+                </span>
+              </label>
+              
               {/* Class Filter */}
               {classes.length > 0 && (
                 <select
@@ -377,8 +417,18 @@ function Notifications() {
                     </span>
                   )}
                 </h3>
+                {testMode && (
+                  <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+                    🧪 Test Mode - No emails will be sent
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
+                {testMode && (
+                  <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full flex items-center gap-1">
+                    🧪 Test Mode
+                  </span>
+                )}
                 <button
                   onClick={handleSelectAll}
                   className="text-xs text-blue-600 hover:text-blue-800"
@@ -388,14 +438,18 @@ function Notifications() {
                 <button
                   onClick={handleSendNotifications}
                   disabled={sending || selectedStudents.length === 0}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
+                  className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm disabled:opacity-50 ${
+                    testMode 
+                      ? 'bg-yellow-600 text-white hover:bg-yellow-700' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
                 >
                   {sending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Send className="w-4 h-4" />
                   )}
-                  Send ({selectedStudents.length})
+                  {testMode ? 'Preview' : 'Send'} ({selectedStudents.length})
                 </button>
               </div>
             </div>
@@ -484,7 +538,7 @@ function Notifications() {
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                                   <div>
                                     <span className="text-slate-500">Email:</span>
-                                    <span className="ml-1 font-medium">{student.email || student.nim + '@student.university.ac.id'}</span>
+                                    <span className="ml-1 font-medium">{student.email || student.nim + '@student.unsap.ac.id'}</span>
                                   </div>
                                   <div>
                                     <span className="text-slate-500">Semester:</span>

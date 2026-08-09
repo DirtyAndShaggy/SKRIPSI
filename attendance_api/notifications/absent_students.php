@@ -25,97 +25,239 @@ $classFilter = "";
 if ($class_id) {
     $classFilter = "AND c.class_id = '$class_id'";
 } elseif ($lecturer_id) {
-    // Lecturer: only their schedules (lecturer_id on class_schedules)
     $classFilter = "AND cs.lecturer_id = '$lecturer_id'";
 }
 
-// ─── Get students with absences exceeding threshold ───
-$query = "
+// ─── Day mapping ───
+$dayMap = [
+    'Monday' => 1,
+    'Tuesday' => 2,
+    'Wednesday' => 3,
+    'Thursday' => 4,
+    'Friday' => 5,
+    'Saturday' => 6,
+    'Sunday' => 7
+];
+
+// ─── Get semester start dates ───
+$semesterQuery = "SELECT DISTINCT semester FROM class_schedules WHERE semester IS NOT NULL AND is_archived = 0";
+$semesterResult = mysqli_query($conn, $semesterQuery);
+$semesterStartDates = [];
+while ($row = mysqli_fetch_assoc($semesterResult)) {
+    $sem = $row['semester'];
+    $semNum = intval(preg_replace('/[^0-9]/', '', $sem));
+    if ($semNum % 2 == 0) {
+        $semesterStartDates[$sem] = date('Y') . '-01-01';
+    } else {
+        $semesterStartDates[$sem] = date('Y') . '-07-01';
+    }
+}
+
+// Use earliest attendance as fallback
+if (empty($semesterStartDates)) {
+    $earliestQuery = "SELECT MIN(DATE(timestamp)) as earliest FROM attendance";
+    $earliestResult = mysqli_query($conn, $earliestQuery);
+    if ($earliestRow = mysqli_fetch_assoc($earliestResult)) {
+        $defaultStart = $earliestRow['earliest'] ?? date('Y') . '-07-01';
+    } else {
+        $defaultStart = date('Y') . '-07-01';
+    }
+}
+
+$today = new DateTime();
+$today->setTime(0, 0, 0);
+
+// ─── Get all schedules ───
+$scheduleQuery = "
     SELECT 
-        s.student_id,
-        s.nim,
-        s.name AS student_name,
-        s.email,
-        s.semester AS student_semester,
-        c.class_id,
+        cs.schedule_id,
+        cs.class_id,
+        cs.group_id,
+        cs.day_of_week,
+        cs.semester,
         c.class_code,
         c.class_name,
         l.full_name AS lecturer_name,
-        l.email AS lecturer_email,
-        COUNT(DISTINCT ss.schedule_id) AS total_schedules,
-        COUNT(DISTINCT a.attendance_id) AS attended_count,
-        COUNT(DISTINCT CASE WHEN a.status = 'Present' THEN a.schedule_id END) AS present_count,
-        COUNT(DISTINCT CASE WHEN a.status = 'Late' THEN a.schedule_id END) AS late_count,
-        GROUP_CONCAT(DISTINCT DATE(a.timestamp) ORDER BY a.timestamp ASC) AS absence_dates
-    FROM students s
-    JOIN schedule_students ss ON s.student_id = ss.student_id
-    JOIN class_schedules cs ON ss.schedule_id = cs.schedule_id
+        l.email AS lecturer_email
+    FROM class_schedules cs
     JOIN classes c ON cs.class_id = c.class_id
     LEFT JOIN lecturers l ON cs.lecturer_id = l.lecturer_id
-    LEFT JOIN attendance a ON s.student_id = a.student_id 
-        AND a.schedule_id = ss.schedule_id
-        AND a.status IN ('Present', 'Late')
-    WHERE 1=1
+    WHERE cs.is_archived = 0
     $classFilter
-    AND s.email IS NOT NULL
-    AND s.email != ''
-    GROUP BY s.student_id, c.class_id
-    HAVING (total_schedules - attended_count) >= $threshold
-    ORDER BY (total_schedules - attended_count) DESC, s.name ASC
 ";
 
-$result = mysqli_query($conn, $query);
-
-if (!$result) {
+$scheduleResult = mysqli_query($conn, $scheduleQuery);
+if (!$scheduleResult) {
     echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
     exit;
 }
 
-$students = [];
+$schedules = [];
+while ($row = mysqli_fetch_assoc($scheduleResult)) {
+    $schedules[] = $row;
+}
 
-while ($row = mysqli_fetch_assoc($result)) {
-    $enrolled = $row['total_schedules'];
-    $attended = $row['attended_count'];
-    $absentCount = $enrolled - $attended;
-    $attendancePercentage = $enrolled > 0 ? round(($attended / $enrolled) * 100, 1) : 0;
+// ─── Calculate absences per student ───
+$studentAbsences = [];
+
+foreach ($schedules as $schedule) {
+    $scheduleId = $schedule['schedule_id'];
+    $semester = $schedule['semester'];
+    $dayOfWeek = $schedule['day_of_week'];
+    $classId = $schedule['class_id'];
     
-    // Check if already notified recently (7 days)
-    $notifyQuery = "
-        SELECT notification_date 
-        FROM attendance_notifications 
-        WHERE student_id = '{$row['student_id']}' 
-        AND class_id = '{$row['class_id']}'
-        AND status = 'sent'
-        ORDER BY notification_date DESC 
-        LIMIT 1
-    ";
-    $notifyResult = mysqli_query($conn, $notifyQuery);
-    $lastNotified = null;
-    if ($notifyRow = mysqli_fetch_assoc($notifyResult)) {
-        $lastNotified = $notifyRow['notification_date'];
+    // Get semester start date
+    $startDateStr = $semesterStartDates[$semester] ?? $defaultStart ?? date('Y') . '-07-01';
+    $startDate = new DateTime($startDateStr);
+    $startDate->setTime(0, 0, 0);
+    
+    // Find first occurrence of this day
+    $dayNum = $dayMap[$dayOfWeek] ?? 1;
+    $startDayNum = (int)$startDate->format('N');
+    
+    $daysToAdd = ($dayNum - $startDayNum + 7) % 7;
+    if ($daysToAdd == 0 && $startDate < $today) {
+        $firstSession = clone $startDate;
+    } else {
+        $firstSession = clone $startDate;
+        $firstSession->modify("+$daysToAdd days");
     }
     
-    $students[] = [
-        'student_id' => $row['student_id'],
-        'student_name' => $row['student_name'],
-        'email' => $row['email'],
-        'nim' => $row['nim'],
-        'class_id' => $row['class_id'],
-        'class_code' => $row['class_code'],
-        'class_name' => $row['class_name'],
-        'lecturer_name' => $row['lecturer_name'],
-        'lecturer_email' => $row['lecturer_email'],
-        'student_semester' => $row['student_semester'],
-        'total_schedules' => $enrolled,
-        'attended_count' => $attended,
-        'present_count' => $row['present_count'],
-        'late_count' => $row['late_count'],
-        'absent_count' => $absentCount,
-        'attendance_percentage' => $attendancePercentage,
-        'absence_dates' => $row['absence_dates'],
-        'last_notified' => $lastNotified
-    ];
+    // Count sessions
+    $sessionCount = 0;
+    $currentSession = clone $firstSession;
+    while ($currentSession <= $today) {
+        $sessionCount++;
+        $currentSession->modify('+1 week');
+    }
+    
+    if ($sessionCount == 0) {
+        continue;
+    }
+    
+    // ─── Get students for this schedule with emails ───
+    $studentsQuery = "
+        SELECT 
+            s.student_id,
+            s.nim,
+            s.name AS student_name,
+            s.email,
+            s.semester AS student_semester
+        FROM schedule_students ss
+        JOIN students s ON ss.student_id = s.student_id
+        WHERE ss.schedule_id = '$scheduleId'
+        AND s.email IS NOT NULL
+        AND s.email != ''
+    ";
+    
+    $studentsResult = mysqli_query($conn, $studentsQuery);
+    if (!$studentsResult) {
+        continue;
+    }
+    
+    while ($student = mysqli_fetch_assoc($studentsResult)) {
+        $studentId = $student['student_id'];
+        $key = $studentId . '_' . $classId;
+        
+        if (!isset($studentAbsences[$key])) {
+            $studentAbsences[$key] = [
+                'student_id' => $studentId,
+                'student_name' => $student['student_name'],
+                'nim' => $student['nim'],
+                'email' => $student['email'],
+                'student_semester' => $student['student_semester'],
+                'class_id' => $classId,
+                'class_code' => $schedule['class_code'],
+                'class_name' => $schedule['class_name'],
+                'lecturer_name' => $schedule['lecturer_name'],
+                'lecturer_email' => $schedule['lecturer_email'],
+                'total_schedules' => 0,
+                'attended_count' => 0,
+                'absent_count' => 0,
+                'present_count' => 0,
+                'late_count' => 0
+            ];
+        }
+        
+        // Count attendance
+        $attendanceQuery = "
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) as present,
+                SUM(CASE WHEN status = 'Late' THEN 1 ELSE 0 END) as late
+            FROM attendance
+            WHERE student_id = '$studentId'
+            AND schedule_id = '$scheduleId'
+        ";
+        $attendanceResult = mysqli_query($conn, $attendanceQuery);
+        $attendanceCount = 0;
+        $presentCount = 0;
+        $lateCount = 0;
+        if ($attendanceResult && $row = mysqli_fetch_assoc($attendanceResult)) {
+            $attendanceCount = (int)$row['total'];
+            $presentCount = (int)$row['present'];
+            $lateCount = (int)$row['late'];
+        }
+        
+        $studentAbsences[$key]['total_schedules'] += $sessionCount;
+        $studentAbsences[$key]['attended_count'] += $attendanceCount;
+        $studentAbsences[$key]['present_count'] += $presentCount;
+        $studentAbsences[$key]['late_count'] += $lateCount;
+        $studentAbsences[$key]['absent_count'] = 
+            $studentAbsences[$key]['total_schedules'] - $studentAbsences[$key]['attended_count'];
+    }
 }
+
+// ─── Filter and format results ───
+$students = [];
+foreach ($studentAbsences as $data) {
+    if ($data['absent_count'] >= $threshold) {
+        $attendancePercentage = $data['total_schedules'] > 0 
+            ? round(($data['attended_count'] / $data['total_schedules']) * 100, 1) 
+            : 0;
+        
+        // Check if already notified
+        $notifyQuery = "
+            SELECT notification_date 
+            FROM attendance_notifications 
+            WHERE student_id = '{$data['student_id']}' 
+            AND class_id = '{$data['class_id']}'
+            AND status = 'sent'
+            ORDER BY notification_date DESC 
+            LIMIT 1
+        ";
+        $notifyResult = mysqli_query($conn, $notifyQuery);
+        $lastNotified = null;
+        if ($notifyRow = mysqli_fetch_assoc($notifyResult)) {
+            $lastNotified = $notifyRow['notification_date'];
+        }
+        
+        $students[] = [
+            'student_id' => $data['student_id'],
+            'student_name' => $data['student_name'],
+            'email' => $data['email'],
+            'nim' => $data['nim'],
+            'class_id' => $data['class_id'],
+            'class_code' => $data['class_code'],
+            'class_name' => $data['class_name'],
+            'lecturer_name' => $data['lecturer_name'],
+            'lecturer_email' => $data['lecturer_email'],
+            'student_semester' => $data['student_semester'],
+            'total_schedules' => $data['total_schedules'],
+            'attended_count' => $data['attended_count'],
+            'present_count' => $data['present_count'],
+            'late_count' => $data['late_count'],
+            'absent_count' => $data['absent_count'],
+            'attendance_percentage' => $attendancePercentage,
+            'last_notified' => $lastNotified
+        ];
+    }
+}
+
+// Sort by absent count descending
+usort($students, function($a, $b) {
+    return $b['absent_count'] - $a['absent_count'];
+});
 
 echo json_encode([
     'status' => 'success',
